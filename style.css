@@ -1,0 +1,625 @@
+/* ==========================================
+   NOLYWHOT V3 PROFESSIONAL
+========================================== */
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+body{
+    font-family:Arial,Helvetica,sans-serif;
+    background:#0b5d25;
+    background-image:radial-gradient(circle at center,#1a7b3d,#0b5d25);
+    color:#ffffff;
+    overflow:hidden;
+}
+/* ==========================================
+HOME SCREEN
+========================================== */
+
+#homeScreen,
+#modeScreen{
+    width:100vw;
+    height:100vh;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    gap:20px;
+}
+
+.logoArea{
+    text-align:center;
+    margin-bottom:40px;
+}
+
+.gameTitle{
+    font-size:60px;
+    color:#f5c542;
+    font-weight:900;
+}
+
+.gameSubTitle{
+    font-size:18px;
+    color:white;
+}
+
+.menuButton{
+    width:280px;
+    height:60px;
+    border:none;
+    border-radius:15px;
+    background:linear-gradient(#f6d365,#d4af37);
+    color:#222;
+    font-size:22px;
+    font-weight:bold;
+    cursor:pointer;
+}
+
+.menuButton:disabled{
+    opacity:.6;
+}
+#gameContainer{
+    width:100vw;
+    height:100vh;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    padding:15px;
+}
+
+/* ==========================================
+TOP BAR
+========================================== */
+
+#topBar{
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr 1fr;
+    gap:12px;
+    align-items:center;
+}
+
+.scoreBox{
+    background:#171717;
+    border:3px solid #d4af37;
+    border-radius:18px;
+    height:70px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    box-shadow:0 4px 10px rgba(0,0,0,.5);
+}
+
+.scoreTitle{
+    font-size:14px;
+    color:#d4af37;
+    font-weight:bold;
+}
+
+#playerScore,
+#opponentScore,
+#turnTimer{
+    font-size:26px;
+    font-weight:bold;
+    color:#ffffff;
+}
+
+#gameLogo{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    background:#171717;
+    border:3px solid #d4af37;
+    border-radius:18px;
+    height:70px;
+    font-size:32px;
+    font-weight:900;
+    color:#f5c542;
+    text-shadow:2px 2px 5px rgba(0,0,0,.6);
+}
+.gameLogoImage{
+    width:100%;
+    height:100%;
+    object-fit:contain;
+    padding:5px;
+}
+/* ==========================================
+COMPUTER
+========================================== */
+
+#computerSection{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:150px;
+}
+
+.hand{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+}
+
+.hand .card{
+    width:80px;
+    height:112px;
+    margin-left:-35px;
+    transition:.25s;
+}
+
+.hand .card:first-child{
+    margin-left:0;
+}
+
+.hand .card:hover{
+
+    transform:translateY(-18px) scale(1.08);
+
+    z-index:100;
+
+}
+
+.card{
+    width:90px;
+    height:126px;
+    border-radius:12px;
+    overflow:hidden;
+    background:#ffffff;
+    box-shadow:0 5px 12px rgba(0,0,0,.45);
+}
+
+.card img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+}
+/* ==========================================
+TABLE AREA
+========================================== */
+
+#tableArea{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    gap:60px;
+    margin:15px 0;
+}
+
+.tableColumn{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+}
+
+.tableColumn h3{
+    margin-bottom:10px;
+    color:#f5c542;
+    font-size:20px;
+    font-weight:bold;
+    text-shadow:1px 1px 3px rgba(0,0,0,.5);
+}
+
+#marketCard,
+#playedCard{
+    width:90px;
+    height:126px;
+    border-radius:12px;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+}
+
+#marketCard img,
+#playedCard img{
+    width:100%;
+    height:100%;
+    border-radius:12px;
+}
+
+#marketCount{
+    margin-top:10px;
+    min-width:60px;
+    text-align:center;
+    padding:6px 12px;
+    background:#171717;
+    color:#ffffff;
+    border:2px solid #d4af37;
+    border-radius:20px;
+    font-size:18px;
+    font-weight:bold;
+}
+
+/* ==========================================
+MESSAGE
+========================================== */
+
+#message{
+    text-align:center;
+    font-size:22px;
+    font-weight:bold;
+    color:#ffffff;
+    margin:12px 0;
+    min-height:28px;
+}
+
+/* ==========================================
+PLAYER
+========================================== */
+
+#playerSection{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:180px;
+}
+
+#playerHand{
+    display:flex;
+    justify-content:center;
+    align-items:flex-end;
+}
+
+#playerHand .card{
+    width:85px;
+    height:119px;
+    margin-left:-32px;
+    cursor:pointer;
+    transition:.25s;
+}
+
+#playerHand .card:first-child{
+    margin-left:0;
+}
+
+#playerHand .card:hover{
+    transform:translateY(-18px);
+    z-index:100;
+}
+
+/* ==========================================
+OPPONENT
+========================================== */
+
+#opponentHand{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+}
+
+#opponentHand .card{
+    width:80px;
+    height:112px;
+    margin-left:-28px;
+}
+
+#opponentHand .card:first-child{
+    margin-left:0;
+}
+/* ==========================================
+SHAPE CHOOSER
+========================================== */
+
+#shapeChooser{
+    position:fixed;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    width:90%;
+    max-width:420px;
+    background:#171717;
+    border:3px solid #d4af37;
+    border-radius:20px;
+    padding:25px;
+    text-align:center;
+    box-shadow:0 10px 30px rgba(0,0,0,.7);
+    z-index:1000;
+}
+
+#shapeChooser h2{
+    color:#f5c542;
+    margin-bottom:20px;
+    font-size:28px;
+}
+
+#shapeButtons{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:12px;
+}
+
+.shapeButton{
+    background:#d4af37;
+    color:#000;
+    border:none;
+    border-radius:12px;
+    padding:14px;
+    font-size:18px;
+    font-weight:bold;
+    cursor:pointer;
+    transition:.25s;
+}
+
+.shapeButton:hover{
+    transform:scale(1.05);
+}
+
+/* ==========================================
+   GAME OVER
+========================================== */
+
+#gameOverScreen{
+    position:fixed;
+    inset:0;
+
+    background:rgba(0,0,0,.88);
+
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+
+    z-index:2000;
+
+    animation:gameOverFade .35s ease;
+}
+
+/* Result title */
+
+#gameResult{
+    min-width:280px;
+
+    padding:25px 30px;
+
+    margin-bottom:30px;
+
+    text-align:center;
+
+    font-size:42px;
+    font-weight:bold;
+
+    color:#f5c542;
+
+    background:rgba(20,60,40,.95);
+
+    border:2px solid #d4af37;
+
+    border-radius:18px;
+
+    box-shadow:
+        0 0 20px rgba(212,175,55,.35),
+        inset 0 0 15px rgba(255,255,255,.05);
+
+    animation:resultPop .45s ease;
+}
+
+/* Buttons */
+
+#restartButton,
+#homeButton{
+
+    width:220px;
+
+    padding:15px;
+
+    margin:8px;
+
+    border:none;
+
+    border-radius:12px;
+
+    background:#d4af37;
+
+    color:#000;
+
+    font-size:20px;
+
+    font-weight:bold;
+
+    cursor:pointer;
+
+    transition:
+        transform .2s ease,
+        box-shadow .2s ease,
+        background .2s ease;
+}
+
+/* Button press / hover */
+
+#restartButton:hover,
+#homeButton:hover{
+
+    transform:scale(1.05);
+
+    box-shadow:0 5px 18px rgba(212,175,55,.35);
+}
+
+#restartButton:active,
+#homeButton:active{
+
+    transform:scale(.96);
+
+}
+
+/* ==========================================
+   GAME OVER ANIMATIONS
+========================================== */
+
+@keyframes gameOverFade{
+
+    from{
+        opacity:0;
+    }
+
+    to{
+        opacity:1;
+    }
+
+}
+
+@keyframes resultPop{
+
+    0%{
+        opacity:0;
+        transform:scale(.7);
+    }
+
+    70%{
+        transform:scale(1.05);
+    }
+
+    100%{
+        opacity:1;
+        transform:scale(1);
+    }
+
+}
+/* ==========================================
+UTILITY
+========================================== */
+
+.hidden{
+    display:none !important;
+}
+
+/* ==========================================
+PHONE
+========================================== */
+
+@media (max-width:600px){
+
+    #gameContainer{
+        padding:10px;
+    }
+
+    #topBar{
+        grid-template-columns:repeat(2,1fr);
+        gap:10px;
+    }
+
+    #gameLogo{
+        grid-column:1 / 3;
+        font-size:28px;
+        height:60px;
+    }
+
+    .scoreBox{
+        height:55px;
+    }
+
+    .scoreTitle{
+        font-size:12px;
+    }
+
+    #playerScore,
+    #opponentScore,
+    #turnTimer{
+        font-size:20px;
+    }
+
+    #tableArea{
+        gap:35px;
+    }
+
+    #marketCard,
+    #playedCard{
+        width:75px;
+        height:105px;
+    }
+
+    #playerHand .card{
+        width:68px;
+        height:95px;
+        margin-left:-24px;
+    }
+
+    #opponentHand .card{
+        width:65px;
+        height:91px;
+        margin-left:-22px;
+    }
+
+    #message{
+        font-size:18px;
+    }
+
+    #gameResult{
+        font-size:32px;
+    }
+
+    #restartButton,
+    #homeButton{
+        width:180px;
+        font-size:18px;
+    }
+}
+/* ==========================================
+CARD ANIMATIONS V2
+========================================== */
+
+.card{
+    transition:
+        transform .35s ease,
+        opacity .35s ease,
+        box-shadow .35s ease;
+    transform-origin:center center;
+}
+
+/* Card being played */
+.card.playing{
+    animation:playCard .45s ease forwards;
+}
+
+@keyframes playCard{
+
+    0%{
+        transform:translateY(0) scale(1);
+        opacity:1;
+    }
+
+    50%{
+        transform:translateY(-35px) scale(1.10);
+        box-shadow:0 0 20px gold;
+    }
+
+    100%{
+        transform:translateY(-80px) scale(.85);
+        opacity:0;
+    }
+
+}
+
+/* Card drawn from market */
+.card.drawing{
+    animation:drawCard .45s ease;
+}
+
+@keyframes drawCard{
+
+    0%{
+        transform:translateY(-40px) scale(.75);
+        opacity:0;
+    }
+
+    100%{
+        transform:translateY(0) scale(1);
+        opacity:1;
+    }
+
+}
+
+/* Card click */
+.card.clicked{
+    animation:cardClick .20s ease;
+}
+
+@keyframes cardClick{
+
+    0%{transform:scale(1);}
+    50%{transform:scale(1.12);}
+    100%{transform:scale(1);}
+
+}

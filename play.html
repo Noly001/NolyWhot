@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+content="width=device-width, initial-scale=1.0">
+
+<title>NolyWhot V3</title>
+
+<link rel="stylesheet" href="style.css">
+
+</head>
+
+<body>
+
+<div id="gameContainer">
+
+<!-- ===========================
+TOP BAR
+=========================== -->
+
+<header id="topBar">
+
+<div class="scoreBox">
+
+<div class="scoreTitle">
+
+PLAYER
+
+</div>
+
+<div id="playerScore">
+
+0
+
+</div>
+
+</div>
+
+<div id="gameLogo">
+    <img src="assets/logo.png" class="gameLogoImage" alt="NolyWhot Logo">
+</div>
+
+<div class="scoreBox">
+
+<div class="scoreTitle">
+
+COMPUTER
+
+</div>
+
+<div id="opponentScore">
+
+0
+
+</div>
+
+</div>
+
+<div class="scoreBox">
+
+<div class="scoreTitle">
+
+TIME
+
+</div>
+
+<div id="turnTimer">
+
+20
+
+</div>
+
+</div>
+
+</header>
+
+<!-- ===========================
+COMPUTER
+=========================== -->
+
+<section id="computerSection">
+
+<div id="opponentHand"
+
+class="hand">
+
+</div>
+
+</section>
+
+<!-- ===========================
+TABLE
+=========================== -->
+
+<section id="tableArea">
+
+<div class="tableColumn">
+
+<h3>
+
+MARKET
+
+</h3>
+
+<div id="marketCard">
+
+</div>
+
+<div id="marketCount">
+
+0
+
+</div>
+
+</div>
+
+<div class="tableColumn">
+
+<h3>
+
+PLAYED
+
+</h3>
+
+<div id="playedCard">
+
+</div>
+
+</div>
+
+</section>
+
+<!-- ===========================
+MESSAGE
+=========================== -->
+
+<div id="message">
+
+Your Turn
+
+</div>
+
+<!-- ===========================
+PLAYER
+=========================== -->
+
+<section id="playerSection">
+
+<div id="playerHand"
+
+class="hand">
+
+</div>
+
+</section>
+<!-- ===========================
+SHAPE CHOOSER
+=========================== -->
+
+<div id="shapeChooser" class="hidden">
+
+<h2>
+
+Choose Shape
+
+</h2>
+
+<div id="shapeButtons">
+
+<button class="shapeButton" data-shape="circle">
+Circle
+</button>
+
+<button class="shapeButton" data-shape="triangle">
+Triangle
+</button>
+
+<button class="shapeButton" data-shape="cross">
+Cross
+</button>
+
+<button class="shapeButton" data-shape="square">
+Square
+</button>
+
+<button class="shapeButton" data-shape="star">
+Star
+</button>
+
+</div>
+
+</div>
+
+<!-- ===========================
+GAME OVER
+=========================== -->
+
+<div id="gameOverScreen" class="hidden">
+
+<h1 id="gameResult">
+
+You Win
+
+</h1>
+
+<button id="restartButton">
+
+Play Again
+
+</button>
+
+<button id="homeButton">
+
+Home
+
+</button>
+
+</div>
+
+</div>
+
+<script src="game.js"></script>
+
+</body>
+
+</html>

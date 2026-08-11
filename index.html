@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>NolyWhot</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="homeScreen">
+
+    <div class="logoArea">
+
+        <h1 class="gameTitle">NolyWhot</h1>
+
+        <p class="gameSubTitle">
+            Nigerian Whot Card Game
+        </p>
+
+    </div>
+
+    <button id="playBtn" class="menuButton">
+        ▶ PLAY
+    </button>
+
+</div>
+
+
+
+<div id="modeScreen" style="display:none;">
+
+    <h2>Select Game Mode</h2>
+
+    <button id="computerBtn" class="menuButton">
+        🤖 Play vs Computer
+    </button>
+
+    <button id="onlineBtn" class="menuButton" disabled>
+        🌍 Online (Coming Soon)
+    </button>
+
+    <button id="backBtn" class="menuButton">
+        ← Back
+    </button>
+
+</div>
+
+
+
+<script>
+
+const playBtn = document.getElementById("playBtn");
+
+const modeScreen = document.getElementById("modeScreen");
+
+const homeScreen = document.getElementById("homeScreen");
+
+const computerBtn = document.getElementById("computerBtn");
+
+const backBtn = document.getElementById("backBtn");
+
+playBtn.onclick = function(){
+
+    homeScreen.style.display="none";
+
+    modeScreen.style.display="flex";
+
+};
+
+backBtn.onclick = function(){
+
+    modeScreen.style.display="none";
+
+    homeScreen.style.display="flex";
+
+};
+
+computerBtn.onclick = function(){
+
+    location.href="play.html";
+
+};
+
+</script>
+
+</body>
+</html>
