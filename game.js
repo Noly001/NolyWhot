@@ -200,16 +200,17 @@ function createCard(card, hidden = false){
 
     if(hidden){
 
-        img.src = "assets/cards/back.png";
+        img.src = "back.png";
+
     }else{
 
         if(card.number === 20){
 
-            img.src = "assets/cards/whot/whot20.png";
+            img.src = "whot20.png";
 
         }else{
 
-            img.src = `assets/cards/${card.shape}/${card.shape}${card.number}.png`;
+            img.src = `${card.shape}${card.number}.png`;
 
         }
 
@@ -217,7 +218,7 @@ function createCard(card, hidden = false){
 
     img.onerror = function(){
         console.log("Image not found:", img.src);
-        img.src = "assets/cards/back.png";
+        img.src = "back.png";
     };
 
     div.appendChild(img);
