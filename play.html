@@ -15,7 +15,50 @@ content="width=device-width, initial-scale=1.0">
 </head>
 
 <body>
+<!-- ===========================
+     ONLINE MULTIPLAYER LOBBY
+=========================== -->
 
+<div id="onlineLobby">
+
+    <h1>NolyWhot Online</h1>
+
+    <p id="lobbyMessage">
+        Create a room or join a friend's room
+    </p>
+
+    <button id="createRoomButton">
+        CREATE ROOM
+    </button>
+
+    <div class="joinRoomBox">
+
+        <input
+            type="text"
+            id="roomCodeInput"
+            placeholder="ENTER ROOM CODE"
+            maxlength="6"
+        >
+
+        <button id="joinRoomButton">
+            JOIN ROOM
+        </button>
+
+    </div>
+
+    <div id="roomCodeDisplay" class="hidden">
+
+        <p>YOUR ROOM CODE</p>
+
+        <h2 id="roomCodeText"></h2>
+
+        <p>
+            Share this code with Player 2
+        </p>
+
+    </div>
+
+</div>
 <div id="gameContainer">
 
 <!-- ===========================
@@ -223,8 +266,7 @@ Home
 
 </div>
 
-<script src="game.js"></script>
+<script type="module" src="game.js"></script>
 
 </body>
-
 </html>

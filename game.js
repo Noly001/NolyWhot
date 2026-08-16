@@ -1,4 +1,160 @@
 // =====================================
+// FIREBASE
+// =====================================
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+import {
+    getDatabase,
+    ref,
+    set
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+
+const firebaseConfig = {
+    apiKey: "AIzaSyAI6i5KtbiXbI1nbq3FejALTKCQ1EADvP8",
+    authDomain: "nolywhot.firebaseapp.com",
+    databaseURL: "https://nolywhot-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "nolywhot",
+    storageBucket: "nolywhot.firebasestorage.app",
+    messagingSenderId: "543801656851",
+    appId: "1:543801656851:web:6d04824d5610304c80a1e6",
+    measurementId: "G-HGS0F2TMRF"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+
+const database = getDatabase(firebaseApp);
+
+const auth = getAuth(firebaseApp);
+
+let currentUser = null;
+
+const firebaseReady = signInAnonymously(auth)
+    .then((result) => {
+
+        currentUser = result.user;
+
+        console.log("🔥 Anonymous Firebase login successful!");
+        console.log("👤 Player UID:", currentUser.uid);
+        console.log("🔥 Realtime Database ready!");
+
+    })
+    .catch((error) => {
+
+        console.error("❌ Firebase anonymous login failed:", error);
+
+    });
+
+
+// =====================================
+// ONLINE ROOM SYSTEM
+// =====================================
+
+const createRoomButton =
+    document.getElementById("createRoomButton");
+
+const roomCodeDisplay =
+    document.getElementById("roomCodeDisplay");
+
+const roomCodeText =
+    document.getElementById("roomCodeText");
+
+const lobbyMessage =
+    document.getElementById("lobbyMessage");
+
+const gameContainer =
+    document.getElementById("gameContainer");
+
+
+// Generate a 6-character room code
+function generateRoomCode(){
+
+    const characters =
+        "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+    let code = "";
+
+    for(let i = 0; i < 6; i++){
+
+        code += characters[
+            Math.floor(Math.random() * characters.length)
+        ];
+
+    }
+
+    return code;
+
+}
+
+
+// CREATE ROOM
+createRoomButton.onclick = async function(){
+
+    createRoomButton.disabled = true;
+
+    lobbyMessage.textContent =
+        "Creating room...";
+
+    try{
+
+        await firebaseReady;
+
+        if(!currentUser){
+
+            throw new Error("Firebase user not ready.");
+
+        }
+
+        const roomCode = generateRoomCode();
+
+        const roomRef =
+            ref(database, "rooms/" + roomCode);
+
+        await set(roomRef, {
+
+            host: currentUser.uid,
+
+            guest: null,
+
+            status: "waiting",
+
+            createdAt: Date.now()
+
+        });
+
+        roomCodeText.textContent = roomCode;
+
+        roomCodeDisplay.classList.remove("hidden");
+
+        lobbyMessage.textContent =
+            "Waiting for Player 2...";
+
+        createRoomButton.style.display = "none";
+
+        console.log(
+            "🎮 Room created:",
+            roomCode
+        );
+
+        // Hide the actual card game while waiting
+        gameContainer.style.display = "none";
+
+    }catch(error){
+
+        console.error(
+            "❌ Room creation failed:",
+            error
+        );
+
+        lobbyMessage.textContent =
+            "Could not create room. Try again.";
+
+        createRoomButton.disabled = false;
+
+    }
+
+};
+// =====================================
 // NOLYWHOT V3 PROFESSIONAL
 // PART 1
 // =====================================
@@ -200,17 +356,16 @@ function createCard(card, hidden = false){
 
     if(hidden){
 
-        img.src = "back.png";
-
+        img.src = "assets/cards/back.png";
     }else{
 
         if(card.number === 20){
 
-            img.src = "whot20.png";
+            img.src = "assets/cards/whot/whot20.png";
 
         }else{
 
-            img.src = `${card.shape}${card.number}.png`;
+            img.src = `assets/cards/${card.shape}/${card.shape}${card.number}.png`;
 
         }
 
@@ -218,7 +373,7 @@ function createCard(card, hidden = false){
 
     img.onerror = function(){
         console.log("Image not found:", img.src);
-        img.src = "back.png";
+        img.src = "assets/cards/back.png";
     };
 
     div.appendChild(img);
