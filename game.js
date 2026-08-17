@@ -6,7 +6,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebas
 import {
     getDatabase,
     ref,
-    set
+    set,
+    onValue
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
@@ -64,7 +65,14 @@ const lobbyMessage =
 
 const gameContainer =
     document.getElementById("gameContainer");
+const joinRoomButton =
+    document.getElementById("joinRoomButton");
 
+const roomCodeInput =
+    document.getElementById("roomCodeInput");
+
+let onlineMode = false;
+let currentRoomCode = null;
 
 // Generate a 6-character room code
 function generateRoomCode(){
@@ -150,6 +158,127 @@ createRoomButton.onclick = async function(){
             "Could not create room. Try again.";
 
         createRoomButton.disabled = false;
+
+    }
+
+};
+// =====================================
+// JOIN ROOM
+// =====================================
+
+joinRoomButton.onclick = async function(){
+
+    const roomCode =
+        roomCodeInput.value.trim().toUpperCase();
+
+    if(roomCode.length !== 6){
+
+        lobbyMessage.textContent =
+            "Please enter a valid 6-character room code.";
+
+        return;
+    }
+
+    joinRoomButton.disabled = true;
+
+    lobbyMessage.textContent =
+        "Joining room...";
+
+    try{
+
+        await firebaseReady;
+
+        if(!currentUser){
+
+            throw new Error("Firebase user not ready.");
+
+        }
+
+        const roomRef =
+            ref(database, "rooms/" + roomCode);
+
+        onValue(roomRef, async (snapshot) => {
+
+            if(!snapshot.exists()){
+
+                lobbyMessage.textContent =
+                    "Room not found.";
+
+                joinRoomButton.disabled = false;
+
+                return;
+            }
+
+            const room = snapshot.val();
+
+            // ==========================
+            // ROOM IS FULL
+            // ==========================
+
+            if(room.guest && room.guest !== currentUser.uid){
+
+                lobbyMessage.textContent =
+                    "Room is already full.";
+
+                joinRoomButton.disabled = false;
+
+                return;
+            }
+
+            // ==========================
+            // JOIN AS PLAYER 2
+            // ==========================
+
+            if(!room.guest){
+
+                await set(roomRef, {
+
+                    ...room,
+
+                    guest: currentUser.uid,
+
+                    status: "playing"
+
+                });
+
+                onlineMode = true;
+
+                currentRoomCode = roomCode;
+
+                lobbyMessage.textContent =
+                    "You joined room " + roomCode +
+                    ". Waiting for game to start...";
+
+                roomCodeDisplay.classList.add("hidden");
+
+                createRoomButton.style.display = "none";
+
+                joinRoomButton.style.display = "none";
+
+                roomCodeInput.style.display = "none";
+
+                gameContainer.style.display = "none";
+
+                console.log(
+                    "🎮 Joined room:",
+                    roomCode
+                );
+
+            }
+
+        });
+
+    }catch(error){
+
+        console.error(
+            "❌ Join room failed:",
+            error
+        );
+
+        lobbyMessage.textContent =
+            "Could not join room. Try again.";
+
+        joinRoomButton.disabled = false;
 
     }
 
