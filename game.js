@@ -139,10 +139,42 @@ createRoomButton.onclick = async function(){
 
         createRoomButton.style.display = "none";
 
-        console.log(
+                console.log(
             "🎮 Room created:",
             roomCode
         );
+
+        // ==========================
+        // ONLINE HOST MODE
+        // ==========================
+
+        onlineMode = true;
+        currentRoomCode = roomCode;
+
+        // Watch for Player 2
+        onValue(roomRef, (snapshot) => {
+
+            if(!snapshot.exists()) return;
+
+            const room = snapshot.val();
+
+            if(room.guest){
+
+                lobbyMessage.textContent =
+                    "🎮 Player 2 joined!";
+
+                console.log(
+                    "👤 Player 2 joined:",
+                    room.guest
+                );
+
+                // Keep the game hidden for now.
+                // We will connect the actual multiplayer
+                // card game in the next step.
+
+            }
+
+        });
 
         // Hide the actual card game while waiting
         gameContainer.style.display = "none";
@@ -1340,5 +1372,10 @@ homeButton.onclick=function(){
 // START GAME
 // =====================================
 
-startGame();
+if(!onlineMode){
+
+    startGame();
+
+}
+
 marketCardDiv.addEventListener("click", pickCard);
