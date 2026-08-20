@@ -7,6 +7,7 @@
 
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
 
 <div id="homeScreen">
@@ -28,7 +29,6 @@
 </div>
 
 
-
 <div id="modeScreen" style="display:none;">
 
     <h2>Select Game Mode</h2>
@@ -37,8 +37,8 @@
         🤖 Play vs Computer
     </button>
 
-    <button id="onlineBtn" class="menuButton" disabled>
-        🌍 Online (Coming Soon)
+    <button id="onlineBtn" class="menuButton">
+        🌍 Online Multiplayer
     </button>
 
     <button id="backBtn" class="menuButton">
@@ -48,38 +48,47 @@
 </div>
 
 
-
 <script>
 
 const playBtn = document.getElementById("playBtn");
-
 const modeScreen = document.getElementById("modeScreen");
-
 const homeScreen = document.getElementById("homeScreen");
 
 const computerBtn = document.getElementById("computerBtn");
-
+const onlineBtn = document.getElementById("onlineBtn");
 const backBtn = document.getElementById("backBtn");
 
+
+/* PLAY */
 playBtn.onclick = function(){
 
-    homeScreen.style.display="none";
-
-    modeScreen.style.display="flex";
+    homeScreen.style.display = "none";
+    modeScreen.style.display = "flex";
 
 };
 
+
+/* BACK */
 backBtn.onclick = function(){
 
-    modeScreen.style.display="none";
-
-    homeScreen.style.display="flex";
+    modeScreen.style.display = "none";
+    homeScreen.style.display = "flex";
 
 };
 
+
+/* PLAY VS COMPUTER */
 computerBtn.onclick = function(){
 
-    location.href="play.html";
+    location.href = "play.html?mode=computer";
+
+};
+
+
+/* ONLINE MULTIPLAYER */
+onlineBtn.onclick = function(){
+
+    location.href = "play.html?mode=online";
 
 };
 

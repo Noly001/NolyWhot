@@ -25,7 +25,7 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 
 const database = getDatabase(firebaseApp);
-
+let onlineGameRef = null;
 const auth = getAuth(firebaseApp);
 
 let currentUser = null;
@@ -71,9 +71,21 @@ const joinRoomButton =
 const roomCodeInput =
     document.getElementById("roomCodeInput");
 
-let onlineMode = false;
-let currentRoomCode = null;
+// =====================================
+// GAME MODE
+// =====================================
 
+const urlParams = new URLSearchParams(window.location.search);
+
+const gameMode = urlParams.get("mode");
+
+let onlineMode = (gameMode === "online");
+
+let currentRoomCode = null;
+let onlineGameStarted = false;
+let onlinePlayerNumber = null;
+console.log("🎮 Game Mode:", gameMode);
+console.log("🌐 Online Mode:", onlineMode);
 // Generate a 6-character room code
 function generateRoomCode(){
 
@@ -147,34 +159,54 @@ createRoomButton.onclick = async function(){
         // ==========================
         // ONLINE HOST MODE
         // ==========================
+        onlinePlayerNumber = 2;  
+        onlineMode = true;
+        currentRoomCode = roomCode;
+        onlineGameRef =
+    ref(database, "rooms/" + roomCode + "/game");
+        // ==========================
+// WATCH FOR PLAYER 2
+// ==========================
 
+onValue(roomRef, (snapshot) => {
+
+    if(!snapshot.exists()) return;
+
+    const room = snapshot.val();
+
+   if(room.guest && !onlineGameStarted){
+onlinePlayerNumber = 1;
+    onlineGameStarted = true;
+
+    console.log(
+        "👤 Player 2 joined:",
+        room.guest
+    );
+
+        lobbyMessage.textContent =
+            "🎮 Player 2 joined! Starting game...";
+
+        // Host is Player 1
         onlineMode = true;
         currentRoomCode = roomCode;
 
-        // Watch for Player 2
-        onValue(roomRef, (snapshot) => {
+        // Hide lobby
+        onlineLobby.style.display = "none";
 
-            if(!snapshot.exists()) return;
+        // Show game
+        gameContainer.style.display = "block";
 
-            const room = snapshot.val();
+        console.log(
+            "🌐 Multiplayer game starting..."
+        );
 
-            if(room.guest){
+        // Start the local game for now.
+        // Firebase synchronization comes next.
+        startGame();
 
-                lobbyMessage.textContent =
-                    "🎮 Player 2 joined!";
+    }
 
-                console.log(
-                    "👤 Player 2 joined:",
-                    room.guest
-                );
-
-                // Keep the game hidden for now.
-                // We will connect the actual multiplayer
-                // card game in the next step.
-
-            }
-
-        });
+});
 
         // Hide the actual card game while waiting
         gameContainer.style.display = "none";
@@ -257,47 +289,54 @@ joinRoomButton.onclick = async function(){
                 return;
             }
 
-            // ==========================
-            // JOIN AS PLAYER 2
-            // ==========================
+ // ==========================
+// JOIN AS PLAYER 2
+// ==========================
 
-            if(!room.guest){
+if(!room.guest){
 
-                await set(roomRef, {
+    await set(roomRef, {
 
-                    ...room,
+        ...room,
 
-                    guest: currentUser.uid,
+        guest: currentUser.uid,
 
-                    status: "playing"
+        status: "playing"
 
-                });
+    });
 
-                onlineMode = true;
+    onlineMode = true;
 
-                currentRoomCode = roomCode;
+    currentRoomCode = roomCode;
+    onlineGameRef =
+    ref(database, "rooms/" + roomCode + "/game");
+    lobbyMessage.textContent =
+        "🎮 Player 2 joined! Starting game...";
 
-                lobbyMessage.textContent =
-                    "You joined room " + roomCode +
-                    ". Waiting for game to start...";
+    roomCodeDisplay.classList.add("hidden");
 
-                roomCodeDisplay.classList.add("hidden");
+    createRoomButton.style.display = "none";
 
-                createRoomButton.style.display = "none";
+    joinRoomButton.style.display = "none";
 
-                joinRoomButton.style.display = "none";
+    roomCodeInput.style.display = "none";
 
-                roomCodeInput.style.display = "none";
+    // Hide lobby
+    onlineLobby.style.display = "none";
 
-                gameContainer.style.display = "none";
+    // Show game
+    gameContainer.style.display = "block";
 
-                console.log(
-                    "🎮 Joined room:",
-                    roomCode
-                );
+    console.log(
+        "🎮 Player 2 joined room:",
+        roomCode
+    );
 
-            }
+    // Start local game for now.
+    // Firebase card synchronization comes next.
+    startGame();
 
+}
         });
 
     }catch(error){
@@ -734,79 +773,57 @@ function playCard(index){
         displayPlayedCard();
         displayPlayerCards();
 
-        // ==========================
-        // WHOT (20)
-        // ==========================
+// ==========================
+// WHOT (20)
+// ==========================
 
-        if(card.number === 20){
+if(card.number === 20){
 
-            checkWinner();
+    checkWinner();
 
-            if(gameOver){
-                return;
-            }
+    if(gameOver){
+        return;
+    }
 
-            requestedShape = null;
+    requestedShape = null;
 
-            displayPlayerCards();
+    shapeChooser.classList.remove("hidden");
 
-            // Show shape chooser
-            shapeChooser.classList.remove("hidden");
+    specialSound.currentTime = 0;
+    specialSound.play();
 
-            return;
-        }
+    updateBoard();
 
-        requestedShape = null;
+    return;
+}
 
-        // ==========================
-        // HOLD ON (1)
-        // Player plays again
-        // ==========================
+// ==========================
+// PICK TWO (2)
+// ==========================
 
-        if(card.number === 1){
+if(card.number === 2){
 
-            updateBoard();
+    const c1 = drawCard();
+    const c2 = drawCard();
 
-            checkWinner();
+    if(c1) opponentHand.push(c1);
+    if(c2) opponentHand.push(c2);
 
-            if(!gameOver){
+    messageText.textContent =
+        "Computer picked two cards.";
 
-                playerTurn = true;
+    updateBoard();
 
-                startTimer();
+    checkWinner();
 
-            }
+    if(gameOver) return;
 
-            return;
-        }
+    playerTurn = true;
 
-        // ==========================
-        // PICK TWO (2)
-        // ==========================
+    startTimer();
 
-        if(card.number === 2){
-
-            const c1 = drawCard();
-            const c2 = drawCard();
-
-            if(c1) opponentHand.push(c1);
-            if(c2) opponentHand.push(c2);
-
-            messageText.textContent =
-            "Computer picked two cards.";
-
-            updateBoard();
-
-            checkWinner();
-
-            if(gameOver) return;
-
-            playerTurn = true;
-
-            startTimer();
-
-            return;
-        }
+    return;
+}
 
         // ==========================
         // SUSPENSION (8)
@@ -1372,9 +1389,29 @@ homeButton.onclick=function(){
 // START GAME
 // =====================================
 
-if(!onlineMode){
+if(gameMode === "computer"){
+
+    console.log("🤖 Starting Computer Mode");
+
+    onlineLobby.style.display = "none";
+    gameContainer.style.display = "block";
 
     startGame();
+
+}
+
+else if(gameMode === "online"){
+
+    console.log("🌐 Starting Online Mode");
+
+    onlineLobby.style.display = "block";
+    gameContainer.style.display = "none";
+
+}
+
+else{
+
+    console.log("⚠️ No game mode selected.");
 
 }
 

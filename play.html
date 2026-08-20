@@ -6,7 +6,7 @@
 <meta charset="UTF-8">
 
 <meta name="viewport"
-content="width=device-width, initial-scale=1.0">
+content="width=device-width, initial-scale=1.0, user-scalable=no">
 
 <title>NolyWhot V3</title>
 
@@ -15,11 +15,12 @@ content="width=device-width, initial-scale=1.0">
 </head>
 
 <body>
+
 <!-- ===========================
      ONLINE MULTIPLAYER LOBBY
 =========================== -->
 
-<div id="onlineLobby">
+<div id="onlineLobby" style="display:none;">
 
     <h1>NolyWhot Online</h1>
 
@@ -59,6 +60,12 @@ content="width=device-width, initial-scale=1.0">
     </div>
 
 </div>
+
+
+<!-- ===========================
+     GAME
+=========================== -->
+
 <div id="gameContainer">
 
 <!-- ===========================
@@ -70,70 +77,67 @@ TOP BAR
 <div class="scoreBox">
 
 <div class="scoreTitle">
-
 PLAYER
-
 </div>
 
 <div id="playerScore">
-
 0
-
 </div>
 
 </div>
+
 
 <div id="gameLogo">
-    <img src="assets/logo.png" class="gameLogoImage" alt="NolyWhot Logo">
+
+<img
+src="assets/logo.png"
+class="gameLogoImage"
+alt="NolyWhot Logo">
+
 </div>
+
 
 <div class="scoreBox">
 
 <div class="scoreTitle">
-
 COMPUTER
-
 </div>
 
 <div id="opponentScore">
-
 0
-
 </div>
 
 </div>
+
 
 <div class="scoreBox">
 
 <div class="scoreTitle">
-
 TIME
-
 </div>
 
 <div id="turnTimer">
-
 20
-
 </div>
 
 </div>
 
 </header>
 
+
 <!-- ===========================
-COMPUTER
+COMPUTER / OPPONENT
 =========================== -->
 
 <section id="computerSection">
 
-<div id="opponentHand"
-
+<div
+id="opponentHand"
 class="hand">
-
 </div>
 
 </section>
+
 
 <!-- ===========================
 TABLE
@@ -144,93 +148,97 @@ TABLE
 <div class="tableColumn">
 
 <h3>
-
 MARKET
-
 </h3>
 
 <div id="marketCard">
-
 </div>
 
 <div id="marketCount">
-
 0
-
 </div>
 
 </div>
+
 
 <div class="tableColumn">
 
 <h3>
-
 PLAYED
-
 </h3>
 
 <div id="playedCard">
-
 </div>
 
 </div>
 
 </section>
+
 
 <!-- ===========================
 MESSAGE
 =========================== -->
 
 <div id="message">
-
 Your Turn
-
 </div>
 
+
 <!-- ===========================
-PLAYER
+PLAYER HAND
 =========================== -->
 
 <section id="playerSection">
 
-<div id="playerHand"
-
+<div
+id="playerHand"
 class="hand">
-
 </div>
 
 </section>
+
+
 <!-- ===========================
 SHAPE CHOOSER
 =========================== -->
 
-<div id="shapeChooser" class="hidden">
+<div
+id="shapeChooser"
+class="hidden">
 
 <h2>
-
 Choose Shape
-
 </h2>
 
 <div id="shapeButtons">
 
-<button class="shapeButton" data-shape="circle">
+<button
+class="shapeButton"
+data-shape="circle">
 Circle
 </button>
 
-<button class="shapeButton" data-shape="triangle">
+<button
+class="shapeButton"
+data-shape="triangle">
 Triangle
 </button>
 
-<button class="shapeButton" data-shape="cross">
+<button
+class="shapeButton"
+data-shape="cross">
 Cross
 </button>
 
-<button class="shapeButton" data-shape="square">
+<button
+class="shapeButton"
+data-shape="square">
 Square
 </button>
 
-<button class="shapeButton" data-shape="star">
+<button
+class="shapeButton"
+data-shape="star">
 Star
 </button>
 
@@ -238,35 +246,104 @@ Star
 
 </div>
 
+
 <!-- ===========================
 GAME OVER
 =========================== -->
 
-<div id="gameOverScreen" class="hidden">
+<div
+id="gameOverScreen"
+class="hidden">
 
 <h1 id="gameResult">
-
 You Win
-
 </h1>
 
 <button id="restartButton">
-
 Play Again
-
 </button>
 
 <button id="homeButton">
-
 Home
-
 </button>
 
 </div>
 
 </div>
 
-<script type="module" src="game.js"></script>
+
+<!-- ===========================
+MODE CONTROL
+=========================== -->
+
+<script>
+
+const params = new URLSearchParams(window.location.search);
+
+const gameMode = params.get("mode");
+
+const onlineLobby =
+    document.getElementById("onlineLobby");
+
+const gameContainer =
+    document.getElementById("gameContainer");
+
+
+/*
+   COMPUTER MODE
+   ----------------
+   Hide online lobby.
+   Show game immediately.
+*/
+
+if (gameMode === "computer") {
+
+    onlineLobby.style.display = "none";
+
+    gameContainer.style.display = "block";
+
+}
+
+
+/*
+   ONLINE MODE
+   ----------------
+   Show online lobby.
+   Game starts hidden until
+   multiplayer code allows it.
+*/
+
+else if (gameMode === "online") {
+
+    onlineLobby.style.display = "block";
+
+    gameContainer.style.display = "none";
+
+}
+
+
+/*
+   SAFETY
+   ----------------
+   If play.html is opened
+   without a mode, use computer mode.
+*/
+
+else {
+
+    onlineLobby.style.display = "none";
+
+    gameContainer.style.display = "block";
+
+}
+
+</script>
+
+
+<script
+type="module"
+src="game.js">
+</script>
 
 </body>
 </html>
