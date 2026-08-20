@@ -159,7 +159,7 @@ createRoomButton.onclick = async function(){
         // ==========================
         // ONLINE HOST MODE
         // ==========================
-        onlinePlayerNumber = 2;  
+        onlinePlayerNumber = 1;
         onlineMode = true;
         currentRoomCode = roomCode;
         onlineGameRef =
@@ -294,7 +294,7 @@ joinRoomButton.onclick = async function(){
 // ==========================
 
 if(!room.guest){
-
+onlinePlayerNumber = 2;
     await set(roomRef, {
 
         ...room,
