@@ -1,3 +1,8 @@
+window.addEventListener("error", function(event){
+
+    alert("NolyWhot Error:\n" + event.message);
+
+});
 // =====================================
 // FIREBASE
 // =====================================
@@ -83,7 +88,7 @@ const playerNameText =
 
 const opponentNameText =
     document.getElementById("opponentName");
-console.log("✅ Player name elements loaded");
+
 let onlineMode = (gameMode === "online");
 if(gameMode === "computer"){
 
