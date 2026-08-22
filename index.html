@@ -2,95 +2,153 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>NolyWhot</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Login - NolyWhot</title>
 
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-<div id="homeScreen">
+    <div class="auth-container">
 
-    <div class="logoArea">
+        <div class="logo-area">
+            <h1>NolyWhot</h1>
+            <p>Welcome back, player</p>
+        </div>
 
-        <h1 class="gameTitle">NolyWhot</h1>
+        <div class="auth-box">
 
-        <p class="gameSubTitle">
-            Nigerian Whot Card Game
+            <h2>LOGIN</h2>
+
+            <input
+                type="email"
+                id="loginEmail"
+                placeholder="Email Address"
+                autocomplete="email"
+            >
+
+            <input
+                type="password"
+                id="loginPassword"
+                placeholder="Password"
+                autocomplete="current-password"
+            >
+
+            <button id="loginButton">
+                LOGIN
+            </button>
+
+            <button
+                class="link-button"
+                onclick="window.location.href='signup.html'"
+            >
+                Don't have an account? SIGN UP
+            </button>
+
+        </div>
+
+        <p class="version">
+            NolyWhot V3
         </p>
 
     </div>
 
-    <button id="playBtn" class="menuButton">
-        ▶ PLAY
-    </button>
 
-</div>
+<script type="module">
 
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
 
-<div id="modeScreen" style="display:none;">
-
-    <h2>Select Game Mode</h2>
-
-    <button id="computerBtn" class="menuButton">
-        🤖 Play vs Computer
-    </button>
-
-    <button id="onlineBtn" class="menuButton">
-        🌍 Online Multiplayer
-    </button>
-
-    <button id="backBtn" class="menuButton">
-        ← Back
-    </button>
-
-</div>
+import {
+    getAuth,
+    signInWithEmailAndPassword
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
 
-<script>
-
-const playBtn = document.getElementById("playBtn");
-const modeScreen = document.getElementById("modeScreen");
-const homeScreen = document.getElementById("homeScreen");
-
-const computerBtn = document.getElementById("computerBtn");
-const onlineBtn = document.getElementById("onlineBtn");
-const backBtn = document.getElementById("backBtn");
-
-
-/* PLAY */
-playBtn.onclick = function(){
-
-    homeScreen.style.display = "none";
-    modeScreen.style.display = "flex";
-
+const firebaseConfig = {
+    apiKey: "AIzaSyAI6i5KtbiXbI1nbq3FejALTKCQ1EADvP8",
+    authDomain: "nolywhot.firebaseapp.com",
+    databaseURL: "https://nolywhot-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "nolywhot",
+    storageBucket: "nolywhot.firebasestorage.app",
+    messagingSenderId: "543801656851",
+    appId: "1:543801656851:web:6d04824d5610304c80a1e6",
+    measurementId: "G-HGS0F2TMRF"
 };
 
 
-/* BACK */
-backBtn.onclick = function(){
-
-    modeScreen.style.display = "none";
-    homeScreen.style.display = "flex";
-
-};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 
 
-/* PLAY VS COMPUTER */
-computerBtn.onclick = function(){
+document
+    .getElementById("loginButton")
+    .addEventListener("click", async () => {
 
-    location.href = "play.html?mode=computer";
+        const email =
+            document.getElementById("loginEmail").value.trim();
 
-};
+        const password =
+            document.getElementById("loginPassword").value;
 
 
-/* ONLINE MULTIPLAYER */
-onlineBtn.onclick = function(){
+        if (!email || !password) {
 
-    location.href = "play.html?mode=online";
+            alert("Please enter your email and password.");
+            return;
+        }
 
-};
+
+        try {
+
+            const userCredential =
+                await signInWithEmailAndPassword(
+                    auth,
+                    email,
+                    password
+                );
+
+
+            console.log(
+                "Login successful:",
+                userCredential.user.uid
+            );
+
+
+            alert("Login successful!");
+
+
+            window.location.href = "home.html";
+
+
+        } catch (error) {
+
+            console.error("LOGIN ERROR:", error);
+
+
+            if (
+                error.code === "auth/invalid-credential" ||
+                error.code === "auth/wrong-password" ||
+                error.code === "auth/user-not-found"
+            ) {
+
+                alert("Incorrect email or password.");
+
+            } else if (error.code === "auth/invalid-email") {
+
+                alert("Please enter a valid email address.");
+
+            } else {
+
+                alert(
+                    "Could not log in: " +
+                    error.message
+                );
+            }
+        }
+
+    });
 
 </script>
 

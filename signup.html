@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Create Account - NolyWhot</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="auth-container">
+
+        <div class="logo-area">
+            <h1>NolyWhot</h1>
+            <p>Create your player account</p>
+        </div>
+
+        <div class="auth-box">
+
+            <h2>Create Account</h2>
+
+            <input
+                type="text"
+                id="signupUsername"
+                placeholder="Choose Username"
+                autocomplete="username"
+            >
+
+            <input
+                type="email"
+                id="signupEmail"
+                placeholder="Email Address"
+                autocomplete="email"
+            >
+
+            <input
+                type="password"
+                id="signupPassword"
+                placeholder="Create Password"
+                autocomplete="new-password"
+            >
+
+            <input
+                type="password"
+                id="confirmPassword"
+                placeholder="Confirm Password"
+                autocomplete="new-password"
+            >
+
+            <button id="signupButton">
+                SIGN UP
+            </button>
+
+            <button
+                class="link-button"
+                onclick="window.location.href='index.html'"
+            >
+                Already have an account? LOG IN
+            </button>
+
+        </div>
+
+        <p class="version">
+            NolyWhot V3
+        </p>
+
+    </div>
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+
+import {
+    getAuth,
+    createUserWithEmailAndPassword
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+
+import {
+    getDatabase,
+    ref,
+    set
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
+
+
+const firebaseConfig = {
+    apiKey: "AIzaSyAI6i5KtbiXbI1nbq3FejALTKCQ1EADvP8",
+    authDomain: "nolywhot.firebaseapp.com",
+    databaseURL: "https://nolywhot-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "nolywhot",
+    storageBucket: "nolywhot.firebasestorage.app",
+    messagingSenderId: "543801656851",
+    appId: "1:543801656851:web:6d04824d5610304c80a1e6",
+    measurementId: "G-HGS0F2TMRF"
+};
+
+const app = initializeApp(firebaseConfig);
+
+const auth = getAuth(app);
+
+const database = getDatabase(app);
+
+
+document
+    .getElementById("signupButton")
+    .addEventListener("click", async () => {
+
+        const username =
+            document.getElementById("signupUsername").value.trim();
+
+        const email =
+            document.getElementById("signupEmail").value.trim();
+
+        const password =
+            document.getElementById("signupPassword").value;
+
+        const confirmPassword =
+            document.getElementById("confirmPassword").value;
+
+
+        if (!username || !email || !password || !confirmPassword) {
+
+            alert("Please fill in all fields.");
+            return;
+        }
+
+
+        if (password !== confirmPassword) {
+
+            alert("Passwords do not match.");
+            return;
+        }
+
+
+        if (password.length < 6) {
+
+            alert("Password must be at least 6 characters.");
+            return;
+        }
+
+
+        try {
+
+            const userCredential =
+                await createUserWithEmailAndPassword(
+                    auth,
+                    email,
+                    password
+                );
+const user = userCredential.user;
+
+await set(
+    ref(database, "users/" + user.uid),
+    {
+        username: username,
+        email: email,
+        uid: user.uid
+    }
+);
+
+            console.log(
+                "Account created:",
+                userCredential.user.uid
+            );
+
+
+            alert("Account created successfully!");
+
+
+            window.location.href = "index.html";
+
+
+        } catch (error) {
+
+            console.error("SIGN UP ERROR:", error);
+
+
+            if (error.code === "auth/email-already-in-use") {
+
+                alert("This email is already registered.");
+
+            } else if (error.code === "auth/invalid-email") {
+
+                alert("Please enter a valid email address.");
+
+            } else if (error.code === "auth/weak-password") {
+
+                alert("Password is too weak.");
+
+            } else {
+
+                alert(
+                    "Could not create account: " +
+                    error.message
+                );
+            }
+        }
+
+    });
+
+</script>
+</body>
+</html>

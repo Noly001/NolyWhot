@@ -107,7 +107,10 @@ function generateRoomCode(){
 }
 
 
+// =====================================
 // CREATE ROOM
+// =====================================
+
 createRoomButton.onclick = async function(){
 
     createRoomButton.disabled = true;
@@ -120,9 +123,7 @@ createRoomButton.onclick = async function(){
         await firebaseReady;
 
         if(!currentUser){
-
             throw new Error("Firebase user not ready.");
-
         }
 
         const roomCode = generateRoomCode();
@@ -142,6 +143,19 @@ createRoomButton.onclick = async function(){
 
         });
 
+        // ==========================
+        // HOST SETUP
+        // ==========================
+
+        onlinePlayerNumber = 1;
+
+        onlineMode = true;
+
+        currentRoomCode = roomCode;
+
+        onlineGameRef =
+            ref(database, "rooms/" + roomCode + "/game");
+
         roomCodeText.textContent = roomCode;
 
         roomCodeDisplay.classList.remove("hidden");
@@ -151,65 +165,110 @@ createRoomButton.onclick = async function(){
 
         createRoomButton.style.display = "none";
 
-                console.log(
+        console.log(
             "🎮 Room created:",
             roomCode
         );
 
         // ==========================
-        // ONLINE HOST MODE
+        // WATCH FOR PLAYER 2
         // ==========================
-        onlinePlayerNumber = 1;
-        onlineMode = true;
-        currentRoomCode = roomCode;
-        onlineGameRef =
-    ref(database, "rooms/" + roomCode + "/game");
+
+        onValue(roomRef, (snapshot)=>{
+
+            if(!snapshot.exists()) return;
+
+            const room = snapshot.val();
+
+            if(
+                room.guest &&
+                !onlineGameStarted
+            ){
+
+                onlineGameStarted = true;
+
+                console.log(
+                    "👤 Player 2 joined:",
+                    room.guest
+                );
+
+                lobbyMessage.textContent =
+                    "🎮 Player 2 joined! Starting game...";
+
+                // ==========================
+                // HIDE LOBBY
+                // ==========================
+
+                onlineLobby.style.display = "none";
+
+                // ==========================
+                // SHOW GAME
+                // ==========================
+
+                gameContainer.style.display = "block";
+
+                // ==========================
+                // CREATE SHARED GAME
+                // ==========================
+
+                startOnlineGame();
+
+            }
+
+        });
+
         // ==========================
-// WATCH FOR PLAYER 2
-// ==========================
+        // LISTEN FOR GAME UPDATES
+        // ==========================
 
-onValue(roomRef, (snapshot) => {
+        onValue(onlineGameRef, (snapshot)=>{
 
-    if(!snapshot.exists()) return;
+            if(!snapshot.exists()) return;
 
-    const room = snapshot.val();
+            const game = snapshot.val();
 
-   if(room.guest && !onlineGameStarted){
-onlinePlayerNumber = 1;
-    onlineGameStarted = true;
+            deck =
+                game.deck || [];
 
-    console.log(
-        "👤 Player 2 joined:",
-        room.guest
-    );
+            topCard =
+                game.topCard || null;
 
-        lobbyMessage.textContent =
-            "🎮 Player 2 joined! Starting game...";
+            requestedShape =
+                game.requestedShape || null;
 
-        // Host is Player 1
-        onlineMode = true;
-        currentRoomCode = roomCode;
+            gameOver =
+                game.gameOver || false;
 
-        // Hide lobby
-        onlineLobby.style.display = "none";
+            playerHand =
+                game.playerHand || [];
 
-        // Show game
-        gameContainer.style.display = "block";
+            opponentHand =
+                game.opponentHand || [];
 
-        console.log(
-            "🌐 Multiplayer game starting..."
-        );
+            playerTurn =
+                game.playerTurn === 1;
 
-        // Start the local game for now.
-        // Firebase synchronization comes next.
-        startGame();
+            updateBoard();
 
-    }
+            if(gameOver){
 
-});
+                clearInterval(timer);
 
-        // Hide the actual card game while waiting
-        gameContainer.style.display = "none";
+                return;
+
+            }
+
+            if(playerTurn){
+
+                startTimer();
+
+            }else{
+
+                clearInterval(timer);
+
+            }
+
+        });
 
     }catch(error){
 
@@ -226,6 +285,8 @@ onlinePlayerNumber = 1;
     }
 
 };
+
+
 // =====================================
 // JOIN ROOM
 // =====================================
@@ -233,7 +294,9 @@ onlinePlayerNumber = 1;
 joinRoomButton.onclick = async function(){
 
     const roomCode =
-        roomCodeInput.value.trim().toUpperCase();
+        roomCodeInput.value
+        .trim()
+        .toUpperCase();
 
     if(roomCode.length !== 6){
 
@@ -241,6 +304,7 @@ joinRoomButton.onclick = async function(){
             "Please enter a valid 6-character room code.";
 
         return;
+
     }
 
     joinRoomButton.disabled = true;
@@ -254,89 +318,222 @@ joinRoomButton.onclick = async function(){
 
         if(!currentUser){
 
-            throw new Error("Firebase user not ready.");
+            throw new Error(
+                "Firebase user not ready."
+            );
 
         }
 
         const roomRef =
             ref(database, "rooms/" + roomCode);
 
-        onValue(roomRef, async (snapshot) => {
+        const snapshot =
+            await new Promise((resolve,reject)=>{
+
+                onValue(
+                    roomRef,
+                    resolve,
+                    {
+                        onlyOnce: true
+                    }
+                );
+
+            });
+
+        if(!snapshot.exists()){
+
+            lobbyMessage.textContent =
+                "Room not found.";
+
+            joinRoomButton.disabled = false;
+
+            return;
+
+        }
+
+        const room = snapshot.val();
+
+        // ==========================
+        // CHECK ROOM
+        // ==========================
+
+        if(room.guest){
+
+            lobbyMessage.textContent =
+                "Room is already full.";
+
+            joinRoomButton.disabled = false;
+
+            return;
+
+        }
+
+        // ==========================
+        // PLAYER 2
+        // ==========================
+
+        onlinePlayerNumber = 2;
+
+        onlineMode = true;
+
+        currentRoomCode = roomCode;
+
+        onlineGameRef =
+            ref(
+                database,
+                "rooms/" + roomCode + "/game"
+            );
+
+        // ==========================
+        // IMPORTANT:
+        // REGISTER PLAYER 2
+        // ==========================
+
+        await set(
+            ref(
+                database,
+                "rooms/" +
+                roomCode +
+                "/guest"
+            ),
+            currentUser.uid
+        );
+
+        // ==========================
+        // UPDATE ROOM STATUS
+        // ==========================
+
+        await set(
+            ref(
+                database,
+                "rooms/" +
+                roomCode +
+                "/status"
+            ),
+            "playing"
+        );
+
+        onlineGameStarted = true;
+
+        lobbyMessage.textContent =
+            "🎮 Joined! Waiting for Player 1...";
+
+        // ==========================
+        // HIDE LOBBY
+        // ==========================
+
+        onlineLobby.style.display = "none";
+
+        // ==========================
+        // SHOW GAME
+        // ==========================
+
+        gameContainer.style.display = "block";
+
+        console.log(
+            "🎮 Player 2 joined room:",
+            roomCode
+        );
+
+        // ==========================
+        // RECEIVE PLAYER 1 GAME
+        // ==========================
+
+        onValue(onlineGameRef, (snapshot)=>{
 
             if(!snapshot.exists()){
 
-                lobbyMessage.textContent =
-                    "Room not found.";
-
-                joinRoomButton.disabled = false;
-
                 return;
+
             }
 
-            const room = snapshot.val();
+            const game = snapshot.val();
 
             // ==========================
-            // ROOM IS FULL
+            // SHARED DECK
             // ==========================
 
-            if(room.guest && room.guest !== currentUser.uid){
+            deck =
+                game.deck || [];
 
-                lobbyMessage.textContent =
-                    "Room is already full.";
+            // ==========================
+            // TOP CARD
+            // ==========================
 
-                joinRoomButton.disabled = false;
+            topCard =
+                game.topCard || null;
+
+            // ==========================
+            // REQUESTED SHAPE
+            // ==========================
+
+            requestedShape =
+                game.requestedShape || null;
+
+            // ==========================
+            // GAME OVER
+            // ==========================
+
+            gameOver =
+                game.gameOver || false;
+
+            // ==========================
+            // PLAYER 2 OWN HAND
+            // ==========================
+
+            playerHand =
+                game.opponentHand || [];
+
+            // ==========================
+            // PLAYER 1 HAND
+            // ==========================
+
+            opponentHand =
+                game.playerHand || [];
+
+            // ==========================
+            // PLAYER 2 TURN
+            // ==========================
+
+            playerTurn =
+                game.playerTurn === 2;
+
+            // ==========================
+            // UPDATE BOARD
+            // ==========================
+
+            updateBoard();
+
+            // ==========================
+            // GAME OVER
+            // ==========================
+
+            if(gameOver){
+
+                clearInterval(timer);
 
                 return;
+
             }
 
- // ==========================
-// JOIN AS PLAYER 2
-// ==========================
+            // ==========================
+            // TIMER
+            // ==========================
 
-if(!room.guest){
-onlinePlayerNumber = 2;
-    await set(roomRef, {
+            if(playerTurn){
 
-        ...room,
+                startTimer();
 
-        guest: currentUser.uid,
+            }else{
 
-        status: "playing"
+                clearInterval(timer);
 
-    });
+            }
 
-    onlineMode = true;
+            console.log(
+                "✅ Player 2 received game update."
+            );
 
-    currentRoomCode = roomCode;
-    onlineGameRef =
-    ref(database, "rooms/" + roomCode + "/game");
-    lobbyMessage.textContent =
-        "🎮 Player 2 joined! Starting game...";
-
-    roomCodeDisplay.classList.add("hidden");
-
-    createRoomButton.style.display = "none";
-
-    joinRoomButton.style.display = "none";
-
-    roomCodeInput.style.display = "none";
-
-    // Hide lobby
-    onlineLobby.style.display = "none";
-
-    // Show game
-    gameContainer.style.display = "block";
-
-    console.log(
-        "🎮 Player 2 joined room:",
-        roomCode
-    );
-
-    // Start local game for now.
-    // Firebase card synchronization comes next.
-    startGame();
-
-}
         });
 
     }catch(error){
@@ -354,16 +551,18 @@ onlinePlayerNumber = 2;
     }
 
 };
+
 // =====================================
 // NOLYWHOT V3 PROFESSIONAL
 // PART 1
 // =====================================
-
 // ---------- DOM ----------
 
-const playerHandDiv = document.getElementById("playerHand");
-const opponentHandDiv = document.getElementById("opponentHand");
+const playerHandDiv =
+    document.getElementById("playerHand");
 
+const opponentHandDiv =
+    document.getElementById("opponentHand");
 const marketCardDiv = document.getElementById("marketCard");
 const playedCardDiv = document.getElementById("playedCard");
 
@@ -423,6 +622,43 @@ let timeLeft = 20;
 
 let playerScore = 0;
 let opponentScore = 0;
+// =====================================
+// ONLINE GAME SYNCHRONIZATION
+// =====================================
+
+function syncOnlineGame(){
+
+    if(!onlineMode) return;
+
+    if(!onlineGameRef) return;
+
+    const gameState = {
+
+        deck: deck,
+
+        playerHand: playerHand,
+
+        opponentHand: opponentHand,
+
+        topCard: topCard,
+
+        playerTurn: onlinePlayerNumber === 1
+            ? (playerTurn ? 1 : 2)
+            : (playerTurn ? 2 : 1),
+
+        requestedShape: requestedShape,
+
+        gameOver: gameOver
+
+    };
+
+    set(onlineGameRef, gameState);
+
+    console.log(
+        "🔥 Game synchronized with Firebase."
+    );
+
+}
 // =====================================
 // CREATE DECK (OFFICIAL NIGERIAN WHOT)
 // =====================================
@@ -539,46 +775,242 @@ function startGame(){
 
 }
 // =====================================
+// START ONLINE GAME
+// =====================================
+
+function startOnlineGame(){
+
+    console.log("🌐 Creating shared online game...");
+
+    clearInterval(timer);
+
+    gameOver = false;
+    requestedShape = null;
+
+    // Player 1 starts
+    playerTurn = true;
+
+    // ==========================
+    // CREATE DECK
+    // ==========================
+
+    createDeck();
+
+    shuffleDeck();
+
+    // ==========================
+    // CLEAR HANDS
+    // ==========================
+
+    playerHand = [];
+    opponentHand = [];
+
+    // ==========================
+    // DEAL 6 CARDS EACH
+    // ==========================
+
+    for(let i = 0; i < 6; i++){
+
+        const playerCard = drawCard();
+        const opponentCard = drawCard();
+
+        if(playerCard){
+            playerHand.push(playerCard);
+        }
+
+        if(opponentCard){
+            opponentHand.push(opponentCard);
+        }
+
+    }
+
+    // ==========================
+    // FIRST PLAYED CARD
+    // ==========================
+
+    do{
+
+        topCard = drawCard();
+
+    }while(
+        topCard &&
+        topCard.number === 20
+    );
+
+    // ==========================
+    // SHOW CARDS IMMEDIATELY
+    // ==========================
+
+    updateBoard();
+
+    // ==========================
+    // CREATE FIREBASE STATE
+    // ==========================
+
+    const gameState = {
+
+        deck: deck,
+
+        playerHand: playerHand,
+
+        opponentHand: opponentHand,
+
+        topCard: topCard,
+
+        playerTurn: 1,
+
+        requestedShape: null,
+
+        gameOver: false
+
+    };
+
+    // ==========================
+    // SAVE GAME
+    // ==========================
+
+    if(!onlineGameRef){
+
+        console.error(
+            "❌ onlineGameRef is missing."
+        );
+
+        lobbyMessage.textContent =
+            "Could not connect to online game.";
+
+        return;
+
+    }
+
+    set(onlineGameRef, gameState)
+
+        .then(()=>{
+
+            console.log(
+                "✅ Online game created."
+            );
+
+            console.log(
+                "🃏 Player 1 cards:",
+                playerHand.length
+            );
+
+            console.log(
+                "🃏 Player 2 cards:",
+                opponentHand.length
+            );
+
+            console.log(
+                "🃏 Market cards:",
+                deck.length
+            );
+
+            updateBoard();
+
+            startTimer();
+
+        })
+
+        .catch((error)=>{
+
+            console.error(
+                "❌ Could not save online game:",
+                error
+            );
+
+            lobbyMessage.textContent =
+                "Could not start online game.";
+
+        });
+
+}
+// ====================================
 // CREATE CARD
 // =====================================
 
 function createCard(card, hidden = false){
 
     const div = document.createElement("div");
+
     div.className = "card";
+
+    // Make sure the card has a visible size
+    div.style.width = "70px";
+    div.style.height = "100px";
+    div.style.display = "block";
+    div.style.flexShrink = "0";
 
     const img = document.createElement("img");
 
     img.style.width = "100%";
     img.style.height = "100%";
     img.style.objectFit = "contain";
+    img.style.display = "block";
     img.style.borderRadius = "10px";
+
+    // ==========================
+    // HIDDEN CARD
+    // ==========================
 
     if(hidden){
 
         img.src = "assets/cards/back.png";
-    }else{
-
-        if(card.number === 20){
-
-            img.src = "assets/cards/whot/whot20.png";
-
-        }else{
-
-            img.src = `assets/cards/${card.shape}/${card.shape}${card.number}.png`;
-
-        }
 
     }
 
+    // ==========================
+    // WHOT 20
+    // ==========================
+
+    else if(card && card.number === 20){
+
+        img.src =
+            "assets/cards/whot/whot20.png";
+
+    }
+
+    // ==========================
+    // NORMAL CARD
+    // ==========================
+
+    else if(card){
+
+        img.src =
+            `assets/cards/${card.shape}/${card.shape}${card.number}.png`;
+
+    }
+
+    // ==========================
+    // IMAGE ERROR
+    // ==========================
+
     img.onerror = function(){
-        console.log("Image not found:", img.src);
-        img.src = "assets/cards/back.png";
+
+        console.log(
+            "❌ Card image not found:",
+            img.src
+        );
+
+        // Show card information instead of
+        // leaving a completely empty space.
+
+        img.style.display = "none";
+
+        div.textContent =
+            card
+            ? `${card.shape} ${card.number}`
+            : "CARD";
+
+        div.style.display = "flex";
+        div.style.alignItems = "center";
+        div.style.justifyContent = "center";
+
     };
 
     div.appendChild(img);
 
     return div;
+
 }
 // =====================================
 // UPDATE SCORES
@@ -683,18 +1115,22 @@ function updateBoard(){
     if(requestedShape){
 
         messageText.textContent =
-        "Requested Shape : " +
-        requestedShape.toUpperCase();
+            "Requested Shape : " +
+            requestedShape.toUpperCase();
 
     }else if(playerTurn){
 
         messageText.textContent =
-        "Your Turn";
+            onlineMode
+            ? "Your Turn"
+            : "Your Turn";
 
     }else{
 
         messageText.textContent =
-        "Computer Thinking...";
+            onlineMode
+            ? "Opponent's Turn"
+            : "Computer Thinking...";
 
     }
 
@@ -739,9 +1175,12 @@ function playCard(index){
 
     const card = playerHand[index];
 
+    if(!card) return;
+
     if(!canPlay(card)){
 
-        messageText.textContent = "You cannot play that card.";
+        messageText.textContent =
+            "You cannot play that card.";
 
         return;
 
@@ -753,77 +1192,115 @@ function playCard(index){
     // ANIMATE SELECTED CARD
     // ==========================
 
-    const cardElement = playerHandDiv.children[index];
+    const cardElement =
+        playerHandDiv.children[index];
 
-    cardElement.classList.add("playing");
+    if(cardElement){
+
+        cardElement.classList.add("playing");
+
+    }
 
     setTimeout(()=>{
 
-        // Remove card from player's hand
+        // ==========================
+        // REMOVE CARD FROM HAND
+        // ==========================
+
         playerHand.splice(index,1);
 
-        // Put card on center
+        // ==========================
+        // PUT CARD ON CENTER
+        // ==========================
+
         topCard = card;
 
-        // Sound
+        // ==========================
+        // SOUND
+        // ==========================
+
         playSound.currentTime = 0;
         playSound.play();
 
-        // Update display
-        displayPlayedCard();
-        displayPlayerCards();
+        // ==========================
+        // WHOT (20)
+        // ==========================
 
-// ==========================
-// WHOT (20)
-// ==========================
+        if(card.number === 20){
 
-if(card.number === 20){
+            requestedShape = null;
 
-    checkWinner();
+            displayPlayedCard();
+            displayPlayerCards();
+            updateBoard();
 
-    if(gameOver){
-        return;
-    }
+            checkWinner();
 
-    requestedShape = null;
+            if(gameOver){
 
-    shapeChooser.classList.remove("hidden");
+                syncOnlineGame();
 
-    specialSound.currentTime = 0;
-    specialSound.play();
+                return;
 
-    updateBoard();
+            }
 
-    return;
-}
+            specialSound.currentTime = 0;
+            specialSound.play();
 
-// ==========================
-// PICK TWO (2)
-// ==========================
+            // ==========================
+            // ONLINE MODE
+            // Wait for this player
+            // to choose the shape.
+            // ==========================
 
-if(card.number === 2){
+            shapeChooser.classList.remove("hidden");
 
-    const c1 = drawCard();
-    const c2 = drawCard();
+            syncOnlineGame();
 
-    if(c1) opponentHand.push(c1);
-    if(c2) opponentHand.push(c2);
+            return;
 
-    messageText.textContent =
-        "Computer picked two cards.";
+        }
 
-    updateBoard();
 
-    checkWinner();
+        // ==========================
+        // PICK TWO (2)
+        // ==========================
 
-    if(gameOver) return;
+        if(card.number === 2){
 
-    playerTurn = true;
+            const c1 = drawCard();
+            const c2 = drawCard();
 
-    startTimer();
+            if(c1) opponentHand.push(c1);
+            if(c2) opponentHand.push(c2);
 
-    return;
-}
+            messageText.textContent =
+                onlineMode
+                ? "Opponent picked two cards."
+                : "Computer picked two cards.";
+
+            checkWinner();
+
+            if(gameOver){
+
+                syncOnlineGame();
+
+                return;
+
+            }
+
+            playerTurn = true;
+
+            updateBoard();
+
+            startTimer();
+
+            syncOnlineGame();
+
+            return;
+
+        }
+
 
         // ==========================
         // SUSPENSION (8)
@@ -832,20 +1309,28 @@ if(card.number === 2){
 
         if(card.number === 8){
 
-            updateBoard();
-
             checkWinner();
 
-            if(!gameOver){
+            if(gameOver){
 
-                playerTurn = true;
+                syncOnlineGame();
 
-                startTimer();
+                return;
 
             }
 
+            playerTurn = true;
+
+            updateBoard();
+
+            startTimer();
+
+            syncOnlineGame();
+
             return;
+
         }
+
 
         // ==========================
         // GENERAL MARKET (14)
@@ -862,46 +1347,84 @@ if(card.number === 2){
             }
 
             messageText.textContent =
-            "Computer picked one card.";
-
-            updateBoard();
+                onlineMode
+                ? "Opponent picked one card."
+                : "Computer picked one card.";
 
             checkWinner();
 
-            if(gameOver) return;
+            if(gameOver){
+
+                syncOnlineGame();
+
+                return;
+
+            }
 
             playerTurn = true;
 
+            updateBoard();
+
             startTimer();
 
+            syncOnlineGame();
+
             return;
+
         }
+
 
         // ==========================
         // NORMAL CARD
-        // Opponent's turn
         // ==========================
 
         checkWinner();
 
-        if(gameOver) return;
+        if(gameOver){
 
-        updateBoard();
+            syncOnlineGame();
+
+            return;
+
+        }
+
+        // ==========================
+        // NEXT PLAYER
+        // ==========================
 
         playerTurn = false;
 
-        setTimeout(opponentPlay,800);
+        updateBoard();
+
+        // ==========================
+        // SAVE ONLINE GAME
+        // ==========================
+
+        syncOnlineGame();
+
+        // ==========================
+        // COMPUTER MODE ONLY
+        // ==========================
+
+        if(!onlineMode){
+
+            setTimeout(opponentPlay,800);
+
+        }
 
     },450);
 
 }
 // =====================================
 // PICK FROM MARKET
+// ONLINE + COMPUTER MODE
 // =====================================
 
 function pickCard(){
 
     if(!playerTurn) return;
+
+    if(gameOver) return;
 
     clearInterval(timer);
 
@@ -910,6 +1433,12 @@ function pickCard(){
     if(!card){
 
         checkMarketWinner();
+
+        if(onlineMode){
+
+            syncOnlineGame();
+
+        }
 
         return;
 
@@ -929,10 +1458,16 @@ function pickCard(){
 
     setTimeout(()=>{
 
-        // Add card to player's hand
+        // ==========================
+        // ADD CARD TO PLAYER HAND
+        // ==========================
+
         playerHand.push(card);
 
-        // Remove animation class
+        // ==========================
+        // REMOVE ANIMATION
+        // ==========================
+
         if(marketElement){
 
             marketElement.classList.remove("drawing");
@@ -954,7 +1489,16 @@ function pickCard(){
 
             clearInterval(timer);
 
-            setTimeout(opponentPlay,800);
+            updateBoard();
+
+            syncOnlineGame();
+
+            // Computer mode only
+            if(!onlineMode){
+
+                setTimeout(opponentPlay,800);
+
+            }
 
             return;
 
@@ -968,33 +1512,80 @@ function pickCard(){
 
         clearInterval(timer);
 
-        setTimeout(opponentPlay,800);
+        updateBoard();
+
+        // ==========================
+        // SAVE ONLINE GAME
+        // ==========================
+
+        syncOnlineGame();
+
+        // ==========================
+        // COMPUTER MODE ONLY
+        // ==========================
+
+        if(!onlineMode){
+
+            setTimeout(opponentPlay,800);
+
+        }
 
     },450);
 
 }
 // =====================================
 // SHAPE CHOOSER
+// ONLINE + COMPUTER MODE
 // =====================================
 
 shapeButtons.forEach(button=>{
 
     button.onclick=function(){
 
-        requestedShape=button.dataset.shape;
+        // ==========================
+        // SELECT REQUESTED SHAPE
+        // ==========================
+
+        requestedShape =
+            button.dataset.shape;
+
+        // ==========================
+        // HIDE SHAPE CHOOSER
+        // ==========================
 
         shapeChooser.classList.add("hidden");
 
+        // ==========================
+        // PLAYER'S TURN IS OVER
+        // ==========================
+
+        playerTurn = false;
+
+        // ==========================
+        // UPDATE BOARD
+        // ==========================
+
         updateBoard();
 
-        playerTurn=false;
+        // ==========================
+        // SAVE ONLINE GAME
+        // ==========================
 
-        setTimeout(opponentPlay,800);
+        syncOnlineGame();
+
+        // ==========================
+        // COMPUTER MODE ONLY
+        // ==========================
+
+        if(!onlineMode){
+
+            setTimeout(opponentPlay,800);
+
+        }
 
     };
 
 });
-
 // =====================================
 // COMPUTER AI
 // =====================================
@@ -1416,3 +2007,65 @@ else{
 }
 
 marketCardDiv.addEventListener("click", pickCard);
+// =====================================
+// GAME MODE BUTTONS
+// =====================================
+
+const computerModeButton =
+    document.getElementById("computerModeButton");
+
+const onlineModeButton =
+    document.getElementById("onlineModeButton");
+
+
+// =====================================
+// COMPUTER MODE
+// =====================================
+
+if (computerModeButton) {
+
+    computerModeButton.addEventListener("click", function(){
+
+        console.log("🤖 Computer mode selected");
+
+        window.location.href =
+            window.location.pathname +
+            "?mode=computer";
+
+    });
+
+}
+
+
+// =====================================
+// ONLINE MODE
+// =====================================
+
+if (onlineModeButton) {
+
+    onlineModeButton.addEventListener("click", function(){
+
+        console.log("🌐 Online mode selected");
+
+        window.location.href =
+            window.location.pathname +
+            "?mode=online";
+
+    });
+
+}
+
+// =====================================
+// HIDE MODE SELECTION
+// =====================================
+
+if (modeSelection) {
+
+    if (gameMode === "computer" ||
+        gameMode === "online") {
+
+        modeSelection.style.display = "none";
+
+    }
+
+}

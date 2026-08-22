@@ -623,3 +623,402 @@ CARD ANIMATIONS V2
     100%{transform:scale(1);}
 
 }
+/* =====================================
+   NOLYWHOT FIRST PAGE
+===================================== */
+
+.auth-container {
+    min-height: 100vh;
+    background:
+        radial-gradient(circle at top, #0d5c3a, #032d20 65%, #011b13);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 25px;
+    box-sizing: border-box;
+}
+
+.logo-area {
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+.logo-area h1 {
+    margin: 0;
+    color: #ffd700;
+    font-size: 48px;
+    font-weight: 900;
+    letter-spacing: 2px;
+}
+
+.logo-area p {
+    color: white;
+    margin-top: 8px;
+    font-size: 16px;
+}
+
+.auth-box {
+    width: 100%;
+    max-width: 380px;
+    background: rgba(0, 0, 0, 0.35);
+    padding: 28px;
+    border-radius: 20px;
+    box-sizing: border-box;
+    box-shadow: 0 10px 35px rgba(0, 0, 0, 0.45);
+}
+
+.auth-box h2 {
+    color: white;
+    text-align: center;
+    margin-top: 0;
+    margin-bottom: 22px;
+}
+
+.auth-box input {
+    width: 100%;
+    padding: 15px;
+    margin-bottom: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    font-size: 16px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.auth-box input::placeholder {
+    color: #cccccc;
+}
+
+.auth-box input:focus {
+    border-color: #ffd700;
+}
+
+.auth-box button {
+    width: 100%;
+    padding: 15px;
+    border: none;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#loginButton {
+    background: #ffd700;
+    color: #062d20;
+}
+
+#loginButton:active {
+    transform: scale(0.98);
+}
+
+.link-button {
+    background: transparent;
+    color: #ffd700;
+    margin-top: 12px;
+}
+
+.divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 22px 0;
+    color: #aaa;
+}
+
+.divider::before,
+.divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.signup-button {
+    background: #ffffff;
+    color: #063522;
+}
+
+.version {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 12px;
+    margin-top: 20px;
+}
+/* =====================================
+   NOLYWHOT LUXURY MODE SELECTION
+===================================== */
+
+#modeSelection {
+    position: relative;
+    z-index: 9999;
+
+    min-height: 100vh;
+    box-sizing: border-box;
+
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+
+    padding: 30px 20px;
+
+    text-align: center;
+
+    background:
+        radial-gradient(circle at 50% 20%,
+            rgba(212, 175, 55, 0.16),
+            transparent 30%),
+
+        radial-gradient(circle at 10% 90%,
+            rgba(0, 90, 60, 0.45),
+            transparent 35%),
+
+        radial-gradient(circle at 90% 80%,
+            rgba(212, 175, 55, 0.10),
+            transparent 30%),
+
+        linear-gradient(
+            145deg,
+            #031b14,
+            #062d20 45%,
+            #010b08
+        );
+
+    overflow: hidden;
+}
+
+
+/* Decorative luxury glow */
+
+#modeSelection::before {
+
+    content: "";
+
+    position: absolute;
+
+    width: 280px;
+    height: 280px;
+
+    border-radius: 50%;
+
+    border: 1px solid rgba(212,175,55,0.18);
+
+    box-shadow:
+        0 0 60px rgba(212,175,55,0.08);
+
+    top: 8%;
+    left: 50%;
+
+    transform: translateX(-50%);
+
+    pointer-events: none;
+}
+
+
+/* NolyWhot title */
+
+#modeSelection h1 {
+
+    position: relative;
+
+    margin: 0 0 8px;
+
+    font-size: 48px;
+
+    font-weight: 900;
+
+    letter-spacing: 2px;
+
+    color: #f4d77a;
+
+    text-shadow:
+        0 2px 4px rgba(0,0,0,0.8),
+        0 0 18px rgba(212,175,55,0.25);
+}
+
+
+/* Choose Game Mode */
+
+#modeSelection h2 {
+
+    position: relative;
+
+    margin: 0 0 35px;
+
+    font-size: 19px;
+
+    font-weight: 500;
+
+    letter-spacing: 1px;
+
+    color: #e8eee9;
+}
+
+
+/* =====================================
+   LUXURY GAME BUTTONS
+===================================== */
+
+#modeSelection button {
+
+    position: relative;
+    z-index: 10000;
+
+    display: block;
+
+    width: 90%;
+    max-width: 360px;
+
+    min-height: 64px;
+
+    margin: 12px auto;
+
+    padding: 16px 22px;
+
+    border: 1px solid rgba(244,215,122,0.65);
+
+    border-radius: 16px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #123f2d,
+            #062218
+        );
+
+    color: #f4d77a;
+
+    font-size: 17px;
+
+    font-weight: 900;
+
+    letter-spacing: 1.2px;
+
+    box-shadow:
+        0 8px 20px rgba(0,0,0,0.45),
+        inset 0 1px 0 rgba(255,255,255,0.12),
+        0 0 12px rgba(212,175,55,0.08);
+
+    cursor: pointer;
+
+    pointer-events: auto;
+
+    transition:
+        transform 0.15s ease,
+        box-shadow 0.15s ease,
+        background 0.15s ease;
+}
+
+
+/* Button press / touch */
+
+#modeSelection button:active {
+
+    transform: scale(0.96);
+
+    box-shadow:
+        0 3px 10px rgba(0,0,0,0.5);
+
+}
+
+
+/* Computer button */
+
+#computerModeButton {
+
+    background:
+        linear-gradient(
+            135deg,
+            #174b35,
+            #08271c
+        );
+}
+
+
+/* Online button */
+
+#onlineModeButton {
+
+    background:
+        linear-gradient(
+            135deg,
+            #3d3010,
+            #171105
+        );
+
+}
+
+
+/* Small luxury line above buttons */
+
+#modeSelection button::before {
+
+    content: "";
+
+    position: absolute;
+
+    top: 0;
+    left: 15%;
+
+    width: 70%;
+    height: 1px;
+
+    background:
+        linear-gradient(
+            90deg,
+            transparent,
+            rgba(244,215,122,0.8),
+            transparent
+        );
+
+}
+
+
+/* =====================================
+   SMALL PHONES
+===================================== */
+
+@media (max-width: 480px) {
+
+    #modeSelection h1 {
+        font-size: 40px;
+    }
+
+    #modeSelection h2 {
+        font-size: 17px;
+        margin-bottom: 28px;
+    }
+
+    #modeSelection button {
+        max-width: 330px;
+        min-height: 60px;
+        font-size: 16px;
+    }
+
+}
+/* ===========================
+   GAME MODE BUTTON FIX
+=========================== */
+
+#modeSelection {
+    position: relative;
+    z-index: 9999;
+}
+
+#modeSelection button {
+    position: relative;
+    z-index: 10000;
+    pointer-events: auto;
+    cursor: pointer;
+}
+#modeSelection {
+    position: relative;
+    z-index: 9999;
+    min-height: 100vh;
+    box-sizing: border-box;
+    text-align: center;
+    padding: 40px 20px;
+}

@@ -15,7 +15,25 @@ content="width=device-width, initial-scale=1.0, user-scalable=no">
 </head>
 
 <body>
+<!-- ===========================
+     GAME MODE SELECTION
+=========================== -->
 
+<div id="modeSelection">
+
+    <h1>NolyWhot</h1>
+
+    <h2>Choose Game Mode</h2>
+
+    <button id="computerModeButton">
+        PLAY WITH COMPUTER
+    </button>
+
+    <button id="onlineModeButton">
+        ONLINE MULTIPLAYER
+    </button>
+
+</div>
 <!-- ===========================
      ONLINE MULTIPLAYER LOBBY
 =========================== -->
@@ -65,9 +83,7 @@ content="width=device-width, initial-scale=1.0, user-scalable=no">
 <!-- ===========================
      GAME
 =========================== -->
-
 <div id="gameContainer">
-
 <!-- ===========================
 TOP BAR
 =========================== -->
@@ -77,7 +93,7 @@ TOP BAR
 <div class="scoreBox">
 
 <div class="scoreTitle">
-PLAYER
+PLAYER 1
 </div>
 
 <div id="playerScore">
@@ -100,9 +116,8 @@ alt="NolyWhot Logo">
 <div class="scoreBox">
 
 <div class="scoreTitle">
-COMPUTER
+PLAYER 2
 </div>
-
 <div id="opponentScore">
 0
 </div>
@@ -271,16 +286,20 @@ Home
 
 </div>
 
-
 <!-- ===========================
-MODE CONTROL
+     MODE CONTROL
 =========================== -->
 
 <script>
 
-const params = new URLSearchParams(window.location.search);
+const params =
+    new URLSearchParams(window.location.search);
 
-const gameMode = params.get("mode");
+const gameMode =
+    params.get("mode");
+
+const modeSelection =
+    document.getElementById("modeSelection");
 
 const onlineLobby =
     document.getElementById("onlineLobby");
@@ -289,14 +308,13 @@ const gameContainer =
     document.getElementById("gameContainer");
 
 
-/*
-   COMPUTER MODE
-   ----------------
-   Hide online lobby.
-   Show game immediately.
-*/
+// ===========================
+// COMPUTER MODE
+// ===========================
 
 if (gameMode === "computer") {
+
+    modeSelection.style.display = "none";
 
     onlineLobby.style.display = "none";
 
@@ -305,15 +323,13 @@ if (gameMode === "computer") {
 }
 
 
-/*
-   ONLINE MODE
-   ----------------
-   Show online lobby.
-   Game starts hidden until
-   multiplayer code allows it.
-*/
+// ===========================
+// ONLINE MODE
+// ===========================
 
 else if (gameMode === "online") {
+
+    modeSelection.style.display = "none";
 
     onlineLobby.style.display = "block";
 
@@ -322,20 +338,84 @@ else if (gameMode === "online") {
 }
 
 
-/*
-   SAFETY
-   ----------------
-   If play.html is opened
-   without a mode, use computer mode.
-*/
+// ===========================
+// GAME MODE SELECTION
+// ===========================
 
 else {
 
+    modeSelection.style.display = "block";
+
     onlineLobby.style.display = "none";
 
-    gameContainer.style.display = "block";
+    gameContainer.style.display = "none";
 
 }
+
+</script>
+
+
+<!-- ===========================
+     GAME MODE BUTTONS
+=========================== -->
+
+<script>
+
+document.addEventListener("DOMContentLoaded", function() {
+
+    const computerButton =
+        document.getElementById("computerModeButton");
+
+    const onlineButton =
+        document.getElementById("onlineModeButton");
+
+
+    // ==========================
+    // COMPUTER BUTTON
+    // ==========================
+
+    if (computerButton) {
+
+        computerButton.addEventListener(
+            "click",
+            function() {
+
+                console.log(
+                    "🤖 Computer button clicked"
+                );
+
+                window.location.href =
+                    "play.html?mode=computer";
+
+            }
+        );
+
+    }
+
+
+    // ==========================
+    // ONLINE BUTTON
+    // ==========================
+
+    if (onlineButton) {
+
+        onlineButton.addEventListener(
+            "click",
+            function() {
+
+                console.log(
+                    "🌐 Online button clicked"
+                );
+
+                window.location.href =
+                    "play.html?mode=online";
+
+            }
+        );
+
+    }
+
+});
 
 </script>
 
