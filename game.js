@@ -78,9 +78,18 @@ const roomCodeInput =
 const urlParams = new URLSearchParams(window.location.search);
 
 const gameMode = urlParams.get("mode");
+const playerNameText =
+    document.getElementById("playerName");
 
+const opponentNameText =
+    document.getElementById("opponentName");
 let onlineMode = (gameMode === "online");
+if(gameMode === "computer"){
 
+    playerNameText.textContent = "PLAYER";
+    opponentNameText.textContent = "COMPUTER";
+
+}
 let currentRoomCode = null;
 let onlineGameStarted = false;
 let onlinePlayerNumber = null;
@@ -148,7 +157,8 @@ createRoomButton.onclick = async function(){
         // ==========================
 
         onlinePlayerNumber = 1;
-
+playerNameText.textContent = "PLAYER 1";
+opponentNameText.textContent = "PLAYER 2";
         onlineMode = true;
 
         currentRoomCode = roomCode;
@@ -373,7 +383,8 @@ joinRoomButton.onclick = async function(){
         // ==========================
 
         onlinePlayerNumber = 2;
-
+playerNameText.textContent = "PLAYER 2";
+opponentNameText.textContent = "PLAYER 1";
         onlineMode = true;
 
         currentRoomCode = roomCode;
@@ -951,12 +962,11 @@ function createCard(card, hidden = false){
     // ==========================
     // HIDDEN CARD
     // ==========================
+if(hidden){
 
-    if(hidden){
+    img.src = "./assets/cards/back.png";
 
-        img.src = "assets/cards/back.png";
-
-    }
+}
 
     // ==========================
     // WHOT 20
@@ -965,20 +975,17 @@ function createCard(card, hidden = false){
     else if(card && card.number === 20){
 
         img.src =
-            "assets/cards/whot/whot20.png";
-
-    }
+    "./assets/cards/whot/whot20.png";
 
     // ==========================
     // NORMAL CARD
     // ==========================
+else if(card){
 
-    else if(card){
+    img.src =
+        `./assets/cards/${card.shape}/${card.shape}${card.number}.png`;
 
-        img.src =
-            `assets/cards/${card.shape}/${card.shape}${card.number}.png`;
-
-    }
+}
 
     // ==========================
     // IMAGE ERROR
