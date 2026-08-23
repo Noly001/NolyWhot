@@ -1,8 +1,3 @@
-window.addEventListener("error", function(event){
-
-    alert("NolyWhot Error:\n" + event.message);
-
-});
 // =====================================
 // FIREBASE
 // =====================================
@@ -70,12 +65,21 @@ const lobbyMessage =
 
 const gameContainer =
     document.getElementById("gameContainer");
+const onlineLobby =
+    document.getElementById("onlineLobby");
+
+const modeSelection =
+    document.getElementById("modeSelection");
 const joinRoomButton =
     document.getElementById("joinRoomButton");
 
 const roomCodeInput =
     document.getElementById("roomCodeInput");
+const playerNameText =
+    document.getElementById("playerName");
 
+const opponentNameText =
+    document.getElementById("opponentName");
 // =====================================
 // GAME MODE
 // =====================================
@@ -83,17 +87,11 @@ const roomCodeInput =
 const urlParams = new URLSearchParams(window.location.search);
 
 const gameMode = urlParams.get("mode");
-const playerNameText =
-    document.getElementById("playerName");
-
-const opponentNameText =
-    document.getElementById("opponentName");
 
 let onlineMode = (gameMode === "online");
 if(gameMode === "computer"){
 
-    playerNameText.textContent = "PLAYER";
-    opponentNameText.textContent = "COMPUTER";
+    onlineMode = false;
 
 }
 let currentRoomCode = null;
@@ -943,7 +941,7 @@ function startOnlineGame(){
 }
 // ====================================
 // CREATE CARD
-// =====================================
+// ====================================
 
 function createCard(card, hidden = false){
 
@@ -951,7 +949,6 @@ function createCard(card, hidden = false){
 
     div.className = "card";
 
-    // Make sure the card has a visible size
     div.style.width = "70px";
     div.style.height = "100px";
     div.style.display = "block";
@@ -968,11 +965,12 @@ function createCard(card, hidden = false){
     // ==========================
     // HIDDEN CARD
     // ==========================
-if(hidden){
 
-    img.src = "./assets/cards/back.png";
+    if(hidden){
 
-}
+        img.src = "./assets/cards/back.png";
+
+    }
 
     // ==========================
     // WHOT 20
@@ -980,18 +978,20 @@ if(hidden){
 
     else if(card && card.number === 20){
 
-        img.src =
-    "./assets/cards/whot/whot20.png";
+        img.src = "./assets/cards/whot/whot20.png";
+
+    }
 
     // ==========================
     // NORMAL CARD
     // ==========================
-else if(card){
 
-    img.src =
-        `./assets/cards/${card.shape}/${card.shape}${card.number}.png`;
+    else if(card){
 
-}
+        img.src =
+            `./assets/cards/${card.shape}/${card.shape}${card.number}.png`;
+
+    }
 
     // ==========================
     // IMAGE ERROR
@@ -1003,9 +1003,6 @@ else if(card){
             "❌ Card image not found:",
             img.src
         );
-
-        // Show card information instead of
-        // leaving a completely empty space.
 
         img.style.display = "none";
 
@@ -1992,13 +1989,23 @@ homeButton.onclick=function(){
 // =====================================
 // START GAME
 // =====================================
-
 if(gameMode === "computer"){
 
     console.log("🤖 Starting Computer Mode");
 
-    onlineLobby.style.display = "none";
-    gameContainer.style.display = "block";
+    onlineMode = false;
+
+    if(onlineLobby){
+        onlineLobby.style.display = "none";
+    }
+
+    if(modeSelection){
+        modeSelection.style.display = "none";
+    }
+
+    if(gameContainer){
+        gameContainer.style.display = "block";
+    }
 
     startGame();
 
