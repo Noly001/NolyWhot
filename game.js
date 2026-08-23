@@ -968,7 +968,7 @@ function createCard(card, hidden = false){
 
     if(hidden){
 
-        img.src = "./assets/cards/back.png";
+        img.src = "./back.png";
 
     }
 
@@ -978,7 +978,7 @@ function createCard(card, hidden = false){
 
     else if(card && card.number === 20){
 
-        img.src = "./assets/cards/whot/whot20.png";
+        img.src = "./whot20.png";
 
     }
 
@@ -989,7 +989,7 @@ function createCard(card, hidden = false){
     else if(card){
 
         img.src =
-            `./assets/cards/${card.shape}/${card.shape}${card.number}.png`;
+            `./${card.shape}${card.number}.png`;
 
     }
 
