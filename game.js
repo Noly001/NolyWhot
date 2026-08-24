@@ -962,15 +962,24 @@ function createCard(card, hidden = false){
     img.style.display = "block";
     img.style.borderRadius = "10px";
 
+
     // ==========================
     // HIDDEN CARD
     // ==========================
 
     if(hidden){
 
-        img.src = "./back.png";
+        img.src = "./assets/cards/back.png";
+
+        img.onerror = function(){
+
+            img.onerror = null;
+            img.src = "./back.png";
+
+        };
 
     }
+
 
     // ==========================
     // WHOT 20
@@ -978,9 +987,17 @@ function createCard(card, hidden = false){
 
     else if(card && card.number === 20){
 
-        img.src = "./whot20.png";
+        img.src = "./assets/cards/whot/whot20.png";
+
+        img.onerror = function(){
+
+            img.onerror = null;
+            img.src = "./whot20.png";
+
+        };
 
     }
+
 
     // ==========================
     // NORMAL CARD
@@ -988,20 +1005,32 @@ function createCard(card, hidden = false){
 
     else if(card){
 
+        // Try Acode folder structure first
         img.src =
-            `./${card.shape}${card.number}.png`;
+            `./assets/cards/${card.shape}/${card.shape}${card.number}.png`;
+
+        // If not found, try GitHub/main folder
+        img.onerror = function(){
+
+            img.onerror = null;
+
+            img.src =
+                `./${card.shape}${card.number}.png`;
+
+        };
 
     }
 
+
     // ==========================
-    // IMAGE ERROR
+    // FINAL IMAGE ERROR
     // ==========================
 
     img.onerror = function(){
 
         console.log(
             "❌ Card image not found:",
-            img.src
+            card
         );
 
         img.style.display = "none";
@@ -1016,6 +1045,7 @@ function createCard(card, hidden = false){
         div.style.justifyContent = "center";
 
     };
+
 
     div.appendChild(img);
 
@@ -1271,7 +1301,39 @@ function playCard(index){
 
         }
 
+// ==========================
+// HOLD ON (1)
+// Player plays again
+// ==========================
 
+if(card.number === 1){
+
+    checkWinner();
+
+    if(gameOver){
+
+        syncOnlineGame();
+
+        return;
+
+    }
+
+    messageText.textContent =
+        onlineMode
+        ? "Hold On! Play again."
+        : "Hold On! Play again.";
+
+    playerTurn = true;
+
+    updateBoard();
+
+    startTimer();
+
+    syncOnlineGame();
+
+    return;
+
+}
         // ==========================
         // PICK TWO (2)
         // ==========================
