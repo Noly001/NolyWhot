@@ -1005,11 +1005,12 @@ function createCard(card, hidden = false){
 
     else if(card){
 
-        // Try Acode folder structure first
+        // First: Acode structure
         img.src =
             `./assets/cards/${card.shape}/${card.shape}${card.number}.png`;
 
-        // If not found, try GitHub/main folder
+        // If Acode path doesn't exist,
+        // try GitHub structure
         img.onerror = function(){
 
             img.onerror = null;
