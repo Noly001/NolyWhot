@@ -647,31 +647,77 @@ function syncOnlineGame(){
 
     if(!onlineGameRef) return;
 
+    // Firebase always stores the game
+    // from Player 1's perspective.
     const gameState = {
 
         deck: deck,
 
-        playerHand: playerHand,
+        // ==========================
+        // PLAYER 1 HAND
+        // ==========================
 
-        opponentHand: opponentHand,
+        playerHand:
+            onlinePlayerNumber === 1
+            ? playerHand
+            : opponentHand,
+
+        // ==========================
+        // PLAYER 2 HAND
+        // ==========================
+
+        opponentHand:
+            onlinePlayerNumber === 1
+            ? opponentHand
+            : playerHand,
+
+        // ==========================
+        // CENTER CARD
+        // ==========================
 
         topCard: topCard,
 
-        playerTurn: onlinePlayerNumber === 1
+        // ==========================
+        // WHOSE TURN?
+        // ==========================
+
+        playerTurn:
+            onlinePlayerNumber === 1
             ? (playerTurn ? 1 : 2)
             : (playerTurn ? 2 : 1),
 
+        // ==========================
+        // WHOT REQUESTED SHAPE
+        // ==========================
+
         requestedShape: requestedShape,
+
+        // ==========================
+        // GAME OVER
+        // ==========================
 
         gameOver: gameOver
 
     };
 
-    set(onlineGameRef, gameState);
+    set(onlineGameRef, gameState)
 
-    console.log(
-        "🔥 Game synchronized with Firebase."
-    );
+        .then(()=>{
+
+            console.log(
+                "🔥 Game synchronized successfully."
+            );
+
+        })
+
+        .catch((error)=>{
+
+            console.error(
+                "❌ Game synchronization failed:",
+                error
+            );
+
+        });
 
 }
 // =====================================
