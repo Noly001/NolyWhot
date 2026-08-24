@@ -643,7 +643,13 @@ CARD ANIMATIONS V2
     text-align: center;
     margin-bottom: 25px;
 }
-
+.homeLogoImage{
+    width:110px;
+    height:110px;
+    object-fit:contain;
+    display:block;
+    margin:0 auto 12px;
+}
 .logo-area h1 {
     margin: 0;
     color: #ffd700;
