@@ -97,6 +97,13 @@ if(gameMode === "computer"){
 let currentRoomCode = null;
 let onlineGameStarted = false;
 let onlinePlayerNumber = null;
+// =====================================
+// QUICK MATCH
+// =====================================
+
+let quickMatchActive = false;
+let quickMatchRef = null;
+let quickMatchListener = null;
 console.log("🎮 Game Mode:", gameMode);
 console.log("🌐 Online Mode:", onlineMode);
 // Generate a 6-character room code
@@ -118,15 +125,976 @@ function generateRoomCode(){
     return code;
 
 }
+// =====================================
+// QUICK MATCH
+// =====================================
 
+async function quickMatch(){
 
+    if(quickMatchActive) return;
+
+    quickMatchActive = true;
+
+setQuickMatchUI(true);
+
+showQuickMatchWaiting();
+    try{
+
+        await firebaseReady;
+
+        if(!currentUser){
+
+            throw new Error(
+                "Firebase user not ready."
+            );
+
+        }
+
+        lobbyMessage.textContent =
+            "🔎 Searching for an opponent...";
+
+        console.log(
+            "🔎 Quick Match started."
+        );
+
+        // =====================================
+        // QUICK MATCH QUEUE
+        // =====================================
+
+        quickMatchRef =
+            ref(
+                database,
+                "quickMatch/" +
+                currentUser.uid
+            );
+
+        await set(
+            quickMatchRef,
+            {
+                uid: currentUser.uid,
+                status: "waiting",
+                createdAt: Date.now()
+            }
+        );
+
+        console.log(
+            "✅ Added to Quick Match queue."
+        );
+
+        // =====================================
+        // LOOK FOR ANOTHER PLAYER
+        // =====================================
+
+        watchQuickMatch();
+findQuickMatch();
+
+    }catch(error){
+
+        console.error(
+            "❌ Quick Match failed:",
+            error
+        );
+
+        lobbyMessage.textContent =
+            "Could not start Quick Match.";
+
+        quickMatchActive = false;
+
+    }
+
+}
+// =====================================
+// WATCH QUICK MATCH
+// =====================================
+
+function watchQuickMatch(){
+
+    if(!currentUser){
+
+        console.error(
+            "❌ Firebase user not ready."
+        );
+
+        return;
+
+    }
+
+    const playerQueueRef =
+        ref(
+            database,
+            "quickMatch/" +
+            currentUser.uid
+        );
+
+    quickMatchListener = onValue(
+        playerQueueRef,
+        (snapshot)=>{
+
+            if(!snapshot.exists()){
+
+                return;
+
+            }
+
+            const match =
+                snapshot.val();
+
+            // =================================
+            // PLAYER HAS BEEN MATCHED
+            // =================================
+
+            if(
+                match.status === "matched" &&
+                match.roomCode
+            ){
+
+                console.log(
+                    "🎯 Quick Match room received:",
+                    match.roomCode
+                );
+
+                // ==============================
+                // PLAYER 1
+                // ==============================
+
+                onlinePlayerNumber = 1;
+
+                onlineMode = true;
+
+                currentRoomCode =
+                    match.roomCode;
+
+                onlineGameRef =
+                    ref(
+                        database,
+                        "rooms/" +
+                        match.roomCode +
+                        "/game"
+                    );
+
+                playerNameText.textContent =
+                    "PLAYER 1";
+
+                opponentNameText.textContent =
+                    "PLAYER 2";
+
+                lobbyMessage.textContent =
+                    "🎮 Opponent found! Starting game...";
+// ==============================
+// STOP QUICK MATCH
+// ==============================
+
+stopQuickMatch();
+// =====================================
+// QUICK MATCH WAITING UI
+// =====================================
+
+function showQuickMatchWaiting(){
+
+    const quickButton =
+        document.getElementById(
+            "quickMatchButton"
+        );
+
+    const cancelButton =
+        document.getElementById(
+            "cancelQuickMatchButton"
+        );
+
+    if(quickButton){
+
+        quickButton.disabled = true;
+
+        quickButton.textContent =
+            "🔎 SEARCHING...";
+
+    }
+
+    if(cancelButton){
+
+        cancelButton.style.display =
+            "block";
+
+    }
+
+    if(lobbyMessage){
+
+        lobbyMessage.textContent =
+            "🔎 Searching for an opponent...\nPlease wait...";
+
+    }
+
+}
+                // ==============================
+                // START PLAYER 1 GAME
+                // ==============================
+
+                startQuickMatchGame();
+
+            }
+
+        }
+    );
+
+}
+// =====================================
+// FIND QUICK MATCH
+// =====================================
+
+async function findQuickMatch(){
+
+    try{
+
+        const queueRef =
+            ref(database, "quickMatch");
+
+        quickMatchListener = onValue(
+            queueRef,
+            async (snapshot)=>{
+
+                if(!snapshot.exists()) return;
+
+                const players =
+                    snapshot.val();
+
+                for(
+                    const playerId in players
+                ){
+
+                    // ==========================
+                    // DON'T MATCH YOURSELF
+                    // ==========================
+
+                    if(
+                        playerId ===
+                        currentUser.uid
+                    ){
+
+                        continue;
+
+                    }
+
+                    const player =
+                        players[playerId];
+
+                    if(
+                        player.status !==
+                        "waiting"
+                    ){
+
+                        continue;
+
+                    }
+
+                    console.log(
+                        "🎯 Opponent found:",
+                        playerId
+                    );
+
+                    // ==========================
+                    // CREATE ROOM
+                    // ==========================
+
+                    const roomCode =
+                        generateRoomCode();
+
+                    const roomRef =
+                        ref(
+                            database,
+                            "rooms/" +
+                            roomCode
+                        );
+
+                    await set(
+                        roomRef,
+                        {
+
+                            host:
+                                playerId,
+
+                            guest:
+                                currentUser.uid,
+
+                            status:
+                                "playing",
+
+                            quickMatch:
+                                true,
+
+                            createdAt:
+                                Date.now()
+
+                        }
+                    );
+
+                    // ==========================
+                    // TELL PLAYER 1
+                    // ABOUT THE MATCH
+                    // ==========================
+
+                    await set(
+                        ref(
+                            database,
+                            "quickMatch/" +
+                            playerId
+                        ),
+                        {
+
+                            uid:
+                                playerId,
+
+                            status:
+                                "matched",
+
+                            roomCode:
+                                roomCode
+
+                        }
+                    );
+
+                    // ==========================
+                    // CURRENT PLAYER = PLAYER 2
+                    // ==========================
+
+                    onlinePlayerNumber = 2;
+
+                    onlineMode = true;
+
+                    currentRoomCode =
+                        roomCode;
+
+                    onlineGameRef =
+                        ref(
+                            database,
+                            "rooms/" +
+                            roomCode +
+                            "/game"
+                        );
+
+                    playerNameText.textContent =
+                        "PLAYER 2";
+
+                    opponentNameText.textContent =
+                        "PLAYER 1";
+
+                    onlineGameStarted =
+                        true;
+
+                    lobbyMessage.textContent =
+                        "🎮 Opponent found! Starting game...";
+
+                    // ==========================
+                    // REMOVE CURRENT PLAYER
+                    // FROM QUEUE
+                    // ==========================
+
+                    await set(
+                        ref(
+                            database,
+                            "quickMatch/" +
+                            currentUser.uid
+                        ),
+                        null
+                    );
+
+                    // ==========================
+// STOP SEARCH
+// ==========================
+
+stopQuickMatch();
+
+                    // ==========================
+                    // START PLAYER 2
+                    // ==========================
+
+                    startQuickMatchGame();
+
+                    return;
+
+                }
+
+            }
+        );
+
+    }catch(error){
+
+        console.error(
+            "❌ Quick Match error:",
+            error
+        );
+
+        lobbyMessage.textContent =
+            "Quick Match failed. Please try again.";
+
+        quickMatchActive =
+            false;
+
+    }
+
+}
+// =====================================
+// STICKER PANEL
+// =====================================
+
+function toggleStickerPanel(){
+
+    const stickerPanel =
+        document.getElementById(
+            "stickerPanel"
+        );
+
+    if(!stickerPanel){
+
+        console.error(
+            "❌ Sticker panel not found."
+        );
+
+        return;
+
+    }
+
+    if(
+        stickerPanel.style.display ===
+        "none" ||
+        stickerPanel.style.display === ""
+    ){
+
+        stickerPanel.style.display =
+            "flex";
+
+    }else{
+
+        stickerPanel.style.display =
+            "none";
+
+    }
+
+}
+// =====================================
+// STICKER BUTTON
+// =====================================
+
+const stickerButton =
+    document.getElementById(
+        "stickerButton"
+    );
+
+if(stickerButton){
+
+    stickerButton.addEventListener(
+        "click",
+        function(){
+
+            toggleStickerPanel();
+
+        }
+    );
+
+}
+// =====================================
+// SEND STICKER
+// =====================================
+
+function sendSticker(sticker){
+
+    if(!onlineMode){
+
+        console.log(
+            "⚠️ Stickers are available in Online Mode."
+        );
+
+        return;
+
+    }
+if(!onlineGameStarted){
+
+    console.log(
+        "⚠️ Online game has not started yet."
+    );
+
+    return;
+
+}
+    if(!onlineGameRef){
+
+        console.error(
+            "❌ Online game reference is missing."
+        );
+
+        return;
+
+    }
+
+    currentSticker = {
+    text: sticker,
+    id: Date.now()
+};
+// =================================
+// SHOW STICKER TO SENDER
+// =================================
+
+displaySticker(sticker);
+    console.log(
+        "😀 Sending sticker:",
+        sticker
+    );
+
+    // Close sticker panel
+    const stickerPanel =
+        document.getElementById(
+            "stickerPanel"
+        );
+
+    if(stickerPanel){
+
+        stickerPanel.style.display =
+            "none";
+
+    }
+
+    // Save sticker to Firebase
+    syncOnlineGame();
+
+}
+// =====================================
+// DISPLAY STICKER
+// =====================================
+
+function displaySticker(sticker){
+
+    if(!sticker){
+
+        return;
+
+    }
+
+    const stickerDisplay =
+        document.getElementById(
+            "stickerDisplay"
+        );
+
+    if(!stickerDisplay){
+
+        console.error(
+            "❌ Sticker display not found."
+        );
+
+        return;
+
+    }
+
+    stickerDisplay.textContent =
+        sticker;
+
+    stickerDisplay.style.display =
+        "flex";
+
+    // Clear previous timer
+    clearTimeout(
+        stickerDisplay.hideTimer
+    );
+
+    // Hide after 3 seconds
+    stickerDisplay.hideTimer =
+        setTimeout(function(){
+
+            stickerDisplay.style.display =
+                "none";
+
+        },3000);
+
+}
+// =====================================
+// STICKER OPTIONS
+// =====================================
+
+const stickerOptions =
+    document.querySelectorAll(
+        ".stickerOption"
+    );
+
+stickerOptions.forEach(
+    function(button){
+
+        button.addEventListener(
+            "click",
+            function(){
+
+                sendSticker(
+                    button.textContent.trim()
+                );
+
+            }
+        );
+
+    }
+);
+// =====================================
+// LISTEN TO ONLINE GAME
+// =====================================
+
+function listenToOnlineGame(){
+
+    if(!onlineGameRef){
+
+        console.error(
+            "❌ Online game reference is missing."
+        );
+
+        return;
+
+    }
+
+    onValue(
+        onlineGameRef,
+        (snapshot)=>{
+
+            if(!snapshot.exists()){
+
+                return;
+
+            }
+
+            const game =
+                snapshot.val();
+
+            // =================================
+            // SHARED DECK
+            // =================================
+
+            deck =
+                game.deck || [];
+
+            // =================================
+            // TOP CARD
+            // =================================
+
+            topCard =
+                game.topCard || null;
+
+// =================================
+// REQUESTED SHAPE
+// =================================
+
+requestedShape =
+    game.requestedShape || null;
+
+// =================================
+// RECEIVE STICKER
+// =================================
+
+const receivedSticker =
+    game.sticker || null;
+
+// =================================
+// DISPLAY NEW STICKER ONLY
+// =================================
+
+if(
+    receivedSticker &&
+    receivedSticker.id !== lastStickerId
+){
+
+    lastStickerId =
+        receivedSticker.id;
+
+    displaySticker(
+        receivedSticker.text
+    );
+
+}
+// =================================
+// GAME OVER
+// =================================            gameOver =
+                game.gameOver || false;
+
+            // =================================
+            // PLAYER 2 HAND
+            // =================================
+
+            playerHand =
+                game.opponentHand || [];
+
+            // =================================
+            // PLAYER 1 HAND
+            // =================================
+
+            opponentHand =
+                game.playerHand || [];
+
+            // =================================
+            // PLAYER 2 TURN
+            // =================================
+
+            playerTurn =
+                game.playerTurn === 2;
+
+            // =================================
+            // UPDATE BOARD
+            // =================================
+
+            updateBoard();
+
+            // =================================
+            // GAME OVER
+            // =================================
+
+            if(gameOver){
+
+                clearInterval(timer);
+
+                return;
+
+            }
+
+            // =================================
+            // TIMER
+            // =================================
+
+            if(playerTurn){
+
+                startTimer();
+
+            }else{
+
+                clearInterval(timer);
+
+            }
+
+            console.log(
+                "✅ Quick Match game update received."
+            );
+
+        }
+    );
+
+}
+// =====================================
+// CANCEL QUICK MATCH
+// =====================================
+
+async function cancelQuickMatch(){
+
+    if(!quickMatchActive){
+
+        console.log("⚠️ Quick Match is not active.");
+
+        return;
+
+    }
+
+    console.log("🛑 Cancelling Quick Match...");
+
+    try{
+
+        // =================================
+        // REMOVE PLAYER FROM QUEUE
+        // =================================
+
+        if(quickMatchRef){
+
+            await set(
+                quickMatchRef,
+                null
+            );
+
+        }
+
+        // =================================
+        // STOP MATCHMAKING LISTENER
+        // =================================
+
+        if(quickMatchListener){
+
+            quickMatchListener();
+
+            quickMatchListener = null;
+
+        }
+// =================================
+// RESET QUICK MATCH
+// =================================
+
+stopQuickMatch();
+
+lobbyMessage.textContent =
+    "Choose how you want to play";
+
+        console.log(
+            "✅ Quick Match cancelled."
+        );
+
+    }catch(error){
+
+        console.error(
+            "❌ Could not cancel Quick Match:",
+            error
+        );
+
+        lobbyMessage.textContent =
+            "Could not cancel search.";
+
+    }
+
+}
+// =====================================
+// QUICK MATCH UI
+// =====================================
+
+function setQuickMatchUI(searching){
+
+    const quickButton =
+        document.getElementById(
+            "quickMatchButton"
+        );
+
+    const cancelButton =
+        document.getElementById(
+            "cancelQuickMatchButton"
+        );
+
+    if(quickButton){
+
+        quickButton.disabled =
+            searching;
+
+    }
+
+    if(cancelButton){
+
+        cancelButton.style.display =
+            searching
+            ? "block"
+            : "none";
+
+    }
+
+}
+// =====================================
+// START QUICK MATCH GAME
+// =====================================
+
+function startQuickMatchGame(){
+
+    console.log(
+        "🎮 Starting Quick Match game..."
+    );
+
+    onlineMode = true;
+
+    onlineGameStarted = true;
+
+    // ==========================
+    // HIDE LOBBY
+    // ==========================
+
+    if(onlineLobby){
+
+        onlineLobby.style.display =
+            "none";
+
+    }
+
+    // ==========================
+    // SHOW GAME
+    // ==========================
+
+    if(gameContainer){
+
+        gameContainer.style.display =
+            "block";
+
+    }
+
+    // ==========================
+    // PLAYER NAMES
+    // ==========================
+
+    if(onlinePlayerNumber === 1){
+
+        playerNameText.textContent =
+            "PLAYER 1";
+
+        opponentNameText.textContent =
+            "PLAYER 2";
+
+    }else{
+
+        playerNameText.textContent =
+            "PLAYER 2";
+
+        opponentNameText.textContent =
+            "PLAYER 1";
+
+    }
+
+    // ==========================
+    // PLAYER 1 CREATES GAME
+    // ==========================
+
+    if(onlinePlayerNumber === 1){
+
+        startOnlineGame();
+
+    }
+
+    // ==========================
+    // PLAYER 2 LISTENS
+    // ==========================
+
+    else{
+
+        listenToOnlineGame();
+
+    }
+
+}
+// =====================================
+// STOP QUICK MATCH
+// =====================================
+
+function stopQuickMatch(){
+
+    if(quickMatchListener){
+
+        quickMatchListener();
+
+        quickMatchListener =
+            null;
+
+    }
+
+    quickMatchActive = false;
+
+    quickMatchRef = null;
+
+    setQuickMatchUI(false);
+
+    const quickButton =
+        document.getElementById(
+            "quickMatchButton"
+        );
+
+    if(quickButton){
+
+        quickButton.disabled = false;
+
+        quickButton.textContent =
+            "⚡ ONLINE QUICK MATCH";
+
+    }
+
+    console.log(
+        "🛑 Quick Match stopped."
+    );
+
+}
 // =====================================
 // CREATE ROOM
 // =====================================
 
 createRoomButton.onclick = async function(){
 
-    createRoomButton.disabled = true;
 
     lobbyMessage.textContent =
         "Creating room...";
@@ -637,6 +1605,8 @@ let timeLeft = 20;
 
 let playerScore = 0;
 let opponentScore = 0;
+let currentSticker = null;
+let lastStickerId = null;
 // =====================================
 // ONLINE GAME SYNCHRONIZATION
 // =====================================
@@ -686,18 +1656,23 @@ function syncOnlineGame(){
             ? (playerTurn ? 1 : 2)
             : (playerTurn ? 2 : 1),
 
-        // ==========================
-        // WHOT REQUESTED SHAPE
-        // ==========================
+// ==========================
+// WHOT REQUESTED SHAPE
+// ==========================
 
-        requestedShape: requestedShape,
+requestedShape: requestedShape,
 
-        // ==========================
-        // GAME OVER
-        // ==========================
+// ==========================
+// STICKER
+// ==========================
 
-        gameOver: gameOver
+sticker: currentSticker,
 
+// ==========================
+// GAME OVER
+// ==========================
+
+gameOver: gameOver
     };
 
     set(onlineGameRef, gameState)
@@ -2165,7 +3140,6 @@ if (computerModeButton) {
 
 }
 
-
 // =====================================
 // ONLINE MODE
 // =====================================
@@ -2183,6 +3157,71 @@ if (onlineModeButton) {
     });
 
 }
+
+
+// =====================================
+// ONLINE QUICK MATCH BUTTON
+// =====================================
+
+const quickMatchButton =
+    document.getElementById("quickMatchButton");
+
+if(quickMatchButton){
+
+    quickMatchButton.addEventListener(
+        "click",
+        function(){
+
+            console.log(
+                "⚡ Quick Match selected"
+            );
+
+            onlineMode = true;
+
+            if(onlineLobby){
+
+                onlineLobby.style.display =
+                    "block";
+
+            }
+
+            if(gameContainer){
+
+                gameContainer.style.display =
+                    "none";
+
+            }
+
+            quickMatch();
+
+        }
+    );
+
+}
+
+
+// =====================================
+// CANCEL QUICK MATCH BUTTON
+// =====================================
+
+const cancelQuickMatchButton =
+    document.getElementById(
+        "cancelQuickMatchButton"
+    );
+
+if(cancelQuickMatchButton){
+
+    cancelQuickMatchButton.addEventListener(
+        "click",
+        function(){
+
+            cancelQuickMatch();
+
+        }
+    );
+
+}
+
 
 // =====================================
 // HIDE MODE SELECTION

@@ -1,58 +1,51 @@
-<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html><html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>NolyWhot Home</title>
 
-    <title>NolyWhot Home</title>
+<link rel="stylesheet" href="style.css">
 
-    <link rel="stylesheet" href="style.css">
-</head>
+</head><body><div class="auth-container">
 
-<body>
+    <div class="logo-area">
 
-    <div class="auth-container">
+        <img
+            src="assets/logo.png"
+            class="homeLogoImage"
+            alt="NolyWhot Logo">
 
-        <<div class="logo-area">
-
-    <img
-        src="assets/cards/back.png"
-        class="homeLogoImage"
-        alt="NolyWhot Logo">
-
-    <p>Welcome to NolyWhot</p>
-
-</div>
-
-        <div class="auth-box">
-
-            <h2 id="welcomeMessage">
-                Welcome, Player
-            </h2>
-
-            <p id="usernameDisplay">
-                Loading profile...
-            </p>
-
-            <button id="playButton">
-    PLAY WHOT
-</button>
-
-            <button
-                class="link-button"
-                id="logoutButton"
-            >
-                LOG OUT
-            </button>
-
-        </div>
-
-        <p class="version">
-            NolyWhot V3
-        </p>
+        <p>Welcome to NolyWhot</p>
 
     </div>
 
+    <div class="auth-box">
+
+        <h2 id="welcomeMessage">
+            Welcome, Player
+        </h2>
+
+        <p id="usernameDisplay">
+            Loading profile...
+        </p>
+
+        <button id="playButton">
+            PLAY WHOT
+        </button>
+
+        <button
+            class="link-button"
+            id="logoutButton"
+        >
+            LOG OUT
+        </button>
+
+    </div>
+
+    <p class="version">
+        NolyWhot V3
+    </p>
+
+</div>
 
 <script type="module">
 
@@ -144,6 +137,8 @@ onAuthStateChanged(auth, async (user) => {
     }
 
 });
+
+
 document
     .getElementById("playButton")
     .addEventListener("click", () => {
@@ -151,6 +146,8 @@ document
         window.location.href = "play.html?mode=select";
 
     });
+
+
 document
     .getElementById("logoutButton")
     .addEventListener("click", async () => {
@@ -174,7 +171,5 @@ document
 
     });
 
-</script>
-
-</body>
+</script></body>
 </html>

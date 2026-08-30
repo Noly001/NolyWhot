@@ -43,12 +43,33 @@ content="width=device-width, initial-scale=1.0, user-scalable=no">
     <h1>NolyWhot Online</h1>
 
     <p id="lobbyMessage">
-        Create a room or join a friend's room
+        Choose how you want to play
     </p>
+
+    <!-- ===========================
+         QUICK MATCH
+    =========================== -->
+
+    <button id="quickMatchButton">
+        ⚡ ONLINE QUICK MATCH
+    </button>
+  
+<button
+    id="cancelQuickMatchButton"
+    style="display:none;">
+    CANCEL SEARCH
+</button>
+    <!-- ===========================
+         CREATE ROOM
+    =========================== -->
 
     <button id="createRoomButton">
         CREATE ROOM
     </button>
+
+    <!-- ===========================
+         JOIN ROOM
+    =========================== -->
 
     <div class="joinRoomBox">
 
@@ -65,6 +86,10 @@ content="width=device-width, initial-scale=1.0, user-scalable=no">
 
     </div>
 
+    <!-- ===========================
+         ROOM CODE
+    =========================== -->
+
     <div id="roomCodeDisplay" class="hidden">
 
         <p>YOUR ROOM CODE</p>
@@ -78,7 +103,6 @@ content="width=device-width, initial-scale=1.0, user-scalable=no">
     </div>
 
 </div>
-
 
 <!-- ===========================
      GAME
@@ -104,7 +128,7 @@ PLAYER 1
 <div id="gameLogo">
 
 <img
-src="assets/cards/back.png"
+src="assets/logo.png"
 class="gameLogoImage"
 alt="NolyWhot Logo">
 
@@ -195,7 +219,65 @@ MESSAGE
 <div id="message">
 Your Turn
 </div>
+<!-- ===========================
+     STICKERS
+=========================== -->
 
+<div id="stickerArea">
+
+    <button
+        id="stickerButton">
+        😀 STICKERS
+    </button>
+
+    <div
+        id="stickerPanel"
+        style="display:none;">
+
+        <button class="stickerOption">
+            😂
+        </button>
+
+        <button class="stickerOption">
+            😎
+        </button>
+
+        <button class="stickerOption">
+            😭
+        </button>
+
+        <button class="stickerOption">
+            😡
+        </button>
+
+        <button class="stickerOption">
+            🔥
+        </button>
+
+        <button class="stickerOption">
+            👏
+        </button>
+
+        <button class="stickerOption">
+            ❤️
+        </button>
+
+        <button class="stickerOption">
+            😂😂
+        </button>
+
+    </div>
+
+    <!-- ===========================
+         STICKER DISPLAY
+    =========================== -->
+
+    <div
+        id="stickerDisplay"
+        style="display:none;">
+    </div>
+
+</div>
 
 <!-- ===========================
 PLAYER HAND
