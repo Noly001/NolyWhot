@@ -204,6 +204,48 @@ findQuickMatch();
 
 }
 // =====================================
+// QUICK MATCH WAITING UI
+// =====================================
+
+function showQuickMatchWaiting(){
+
+    const quickButton =
+        document.getElementById(
+            "quickMatchButton"
+        );
+
+    const cancelButton =
+        document.getElementById(
+            "cancelQuickMatchButton"
+        );
+
+    if(quickButton){
+
+        quickButton.disabled = true;
+
+        quickButton.textContent =
+            "🔎 SEARCHING...";
+
+    }
+
+    if(cancelButton){
+
+        cancelButton.style.display =
+            "block";
+
+    }
+
+    if(lobbyMessage){
+
+        lobbyMessage.textContent =
+            "🔎 Searching for an opponent...\nPlease wait...";
+
+    }
+
+}
+
+
+// =====================================
 // WATCH QUICK MATCH
 // =====================================
 
@@ -285,46 +327,7 @@ function watchQuickMatch(){
 // ==============================
 
 stopQuickMatch();
-// =====================================
-// QUICK MATCH WAITING UI
-// =====================================
 
-function showQuickMatchWaiting(){
-
-    const quickButton =
-        document.getElementById(
-            "quickMatchButton"
-        );
-
-    const cancelButton =
-        document.getElementById(
-            "cancelQuickMatchButton"
-        );
-
-    if(quickButton){
-
-        quickButton.disabled = true;
-
-        quickButton.textContent =
-            "🔎 SEARCHING...";
-
-    }
-
-    if(cancelButton){
-
-        cancelButton.style.display =
-            "block";
-
-    }
-
-    if(lobbyMessage){
-
-        lobbyMessage.textContent =
-            "🔎 Searching for an opponent...\nPlease wait...";
-
-    }
-
-}
                 // ==============================
                 // START PLAYER 1 GAME
                 // ==============================
