@@ -100,10 +100,11 @@ let onlinePlayerNumber = null;
 // =====================================
 // QUICK MATCH
 // =====================================
-
 let quickMatchActive = false;
 let quickMatchRef = null;
+
 let quickMatchListener = null;
+let quickMatchFindListener = null;
 console.log("🎮 Game Mode:", gameMode);
 console.log("🌐 Online Mode:", onlineMode);
 // Generate a 6-character room code
@@ -351,7 +352,7 @@ async function findQuickMatch(){
         const queueRef =
             ref(database, "quickMatch");
 
-        quickMatchListener = onValue(
+        quickMatchFindListener = onValue(
             queueRef,
             async (snapshot)=>{
 
@@ -1057,15 +1058,18 @@ function startQuickMatchGame(){
 // =====================================
 
 function stopQuickMatch(){
-
+  
     if(quickMatchListener){
-
         quickMatchListener();
-
-        quickMatchListener =
-            null;
-
+        quickMatchListener = null;
     }
+
+    if(quickMatchFindListener){
+        quickMatchFindListener();
+        quickMatchFindListener = null;
+    }
+
+    quickMatchActive = false;
 
     quickMatchActive = false;
 
