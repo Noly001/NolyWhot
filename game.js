@@ -1108,26 +1108,21 @@ function startQuickMatchGame(){
 
     }
 
-    // ==========================
-    // PLAYER 1 CREATES GAME
-    // ==========================
+// ==========================
+// BOTH PLAYERS LISTEN
+// ==========================
 
-    if(onlinePlayerNumber === 1){
+listenToOnlineGame();
 
-        startOnlineGame();
+// ==========================
+// PLAYER 1 CREATES GAME
+// ==========================
 
-    }
+if(onlinePlayerNumber === 1){
 
-    // ==========================
-    // PLAYER 2 LISTENS
-    // ==========================
+    startOnlineGame();
 
-    else{
-
-        listenToOnlineGame();
-
-    }
-
+}
 }
 // =====================================
 // STOP QUICK MATCH
