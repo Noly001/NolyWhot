@@ -7,7 +7,8 @@ import {
     getDatabase,
     ref,
     set,
-    onValue
+    onValue,
+    runTransaction
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
@@ -253,67 +254,59 @@ function showQuickMatchWaiting(){
 function watchQuickMatch(){
 
     if(!currentUser){
-
-        console.error(
-            "❌ Firebase user not ready."
-        );
-
+        console.error("❌ Firebase user not ready.");
         return;
-
     }
 
     const playerQueueRef =
-        ref(
-            database,
-            "quickMatch/" +
-            currentUser.uid
-        );
+        ref(database, "quickMatch/" + currentUser.uid);
 
     quickMatchListener = onValue(
         playerQueueRef,
-        (snapshot)=>{
+        (snapshot) => {
 
-            if(!snapshot.exists()){
-
+            if(!quickMatchActive){
                 return;
-
             }
 
-            const match =
-                snapshot.val();
+            if(!snapshot.exists()){
+                return;
+            }
 
-            // =================================
-            // PLAYER HAS BEEN MATCHED
-            // =================================
+            const match = snapshot.val();
 
             if(
-                match.status === "matched" &&
-                match.roomCode
+                match.status !== "matched" ||
+                !match.roomCode ||
+                !match.playerNumber
             ){
+                return;
+            }
 
-                console.log(
-                    "🎯 Quick Match room received:",
-                    match.roomCode
+            console.log(
+                "🎯 Quick Match connected!",
+                match.roomCode,
+                "PLAYER",
+                match.playerNumber
+            );
+
+            onlinePlayerNumber =
+                Number(match.playerNumber);
+
+            onlineMode = true;
+
+            currentRoomCode =
+                match.roomCode;
+
+            onlineGameRef =
+                ref(
+                    database,
+                    "rooms/" +
+                    match.roomCode +
+                    "/game"
                 );
 
-                // ==============================
-                // PLAYER 1
-                // ==============================
-
-                onlinePlayerNumber = 1;
-
-                onlineMode = true;
-
-                currentRoomCode =
-                    match.roomCode;
-
-                onlineGameRef =
-                    ref(
-                        database,
-                        "rooms/" +
-                        match.roomCode +
-                        "/game"
-                    );
+            if(onlinePlayerNumber === 1){
 
                 playerNameText.textContent =
                     "PLAYER 1";
@@ -321,25 +314,23 @@ function watchQuickMatch(){
                 opponentNameText.textContent =
                     "PLAYER 2";
 
-                lobbyMessage.textContent =
-                    "🎮 Opponent found! Starting game...";
-// ==============================
-// STOP QUICK MATCH
-// ==============================
+            }else{
 
-stopQuickMatch();
+                playerNameText.textContent =
+                    "PLAYER 2";
 
-                // ==============================
-                // START PLAYER 1 GAME
-                // ==============================
-
-                startQuickMatchGame();
-
+                opponentNameText.textContent =
+                    "PLAYER 1";
             }
 
+            lobbyMessage.textContent =
+                "🎮 Opponent found! Starting game...";
+
+            stopQuickMatch();
+
+            startQuickMatchGame();
         }
     );
-
 }
 // =====================================
 // FIND QUICK MATCH
@@ -347,194 +338,279 @@ stopQuickMatch();
 
 async function findQuickMatch(){
 
-    try{
+    if(!currentUser){
+        console.error("❌ Firebase user not ready.");
+        return;
+    }
 
-        const queueRef =
-            ref(database, "quickMatch");
+    const queueRef =
+        ref(database, "quickMatch");
 
-        quickMatchFindListener = onValue(
+    quickMatchFindListener =
+        onValue(
             queueRef,
-            async (snapshot)=>{
+            async (snapshot) => {
 
-                if(!snapshot.exists()) return;
+                if(!quickMatchActive){
+                    return;
+                }
+
+                if(!snapshot.exists()){
+                    return;
+                }
 
                 const players =
-                    snapshot.val();
+                    snapshot.val() || {};
 
-                for(
-                    const playerId in players
+                // =================================
+                // GET WAITING PLAYERS
+                // =================================
+
+                const waitingPlayers =
+                    Object.values(players)
+                        .filter(
+                            player =>
+                                player &&
+                                player.status === "waiting"
+                        )
+                        .sort(
+                            (a, b) => {
+
+                                const timeA =
+                                    Number(a.createdAt || 0);
+
+                                const timeB =
+                                    Number(b.createdAt || 0);
+
+                                if(timeA !== timeB){
+                                    return timeA - timeB;
+                                }
+
+                                return String(a.uid)
+                                    .localeCompare(
+                                        String(b.uid)
+                                    );
+                            }
+                        );
+
+                // =================================
+                // NEED TWO PLAYERS
+                // =================================
+
+                if(waitingPlayers.length < 2){
+                    return;
+                }
+
+                const player1 =
+                    waitingPlayers[0];
+
+                const player2 =
+                    waitingPlayers[1];
+
+                // =================================
+                // ONLY PLAYER 2 CREATES THE MATCH
+                // =================================
+
+                if(
+                    player2.uid !==
+                    currentUser.uid
                 ){
+                    return;
+                }
 
-                    // ==========================
-                    // DON'T MATCH YOURSELF
-                    // ==========================
+                console.log(
+                    "🎯 Possible opponent found:",
+                    player1.uid
+                );
 
-                    if(
-                        playerId ===
-                        currentUser.uid
-                    ){
+                const roomCode =
+                    generateRoomCode();
 
-                        continue;
+                // =================================
+                // ATOMICALLY MATCH BOTH PLAYERS
+                // =================================
 
-                    }
+                try{
 
-                    const player =
-                        players[playerId];
+                    const result =
+                        await runTransaction(
+                            queueRef,
+                            (currentData) => {
 
-                    if(
-                        player.status !==
-                        "waiting"
-                    ){
+                                if(!currentData){
+                                    return;
+                                }
 
-                        continue;
+                                const currentPlayers =
+                                    Object.values(
+                                        currentData
+                                    )
+                                    .filter(
+                                        player =>
+                                            player &&
+                                            player.status ===
+                                            "waiting"
+                                    )
+                                    .sort(
+                                        (a, b) => {
 
-                    }
+                                            const timeA =
+                                                Number(
+                                                    a.createdAt ||
+                                                    0
+                                                );
 
-                    console.log(
-                        "🎯 Opponent found:",
-                        playerId
-                    );
+                                            const timeB =
+                                                Number(
+                                                    b.createdAt ||
+                                                    0
+                                                );
 
-                    // ==========================
-                    // CREATE ROOM
-                    // ==========================
+                                            if(
+                                                timeA !==
+                                                timeB
+                                            ){
+                                                return (
+                                                    timeA -
+                                                    timeB
+                                                );
+                                            }
 
-                    const roomCode =
-                        generateRoomCode();
+                                            return String(
+                                                a.uid
+                                            ).localeCompare(
+                                                String(
+                                                    b.uid
+                                                )
+                                            );
+                                        }
+                                    );
 
-                    const roomRef =
-                        ref(
-                            database,
-                            "rooms/" +
+                                if(
+                                    currentPlayers.length <
+                                    2
+                                ){
+                                    return;
+                                }
+
+                                const first =
+                                    currentPlayers[0];
+
+                                const second =
+                                    currentPlayers[1];
+
+                                // Make sure these are
+                                // still the same two players
+
+                                if(
+                                    first.uid !==
+                                    player1.uid ||
+                                    second.uid !==
+                                    player2.uid
+                                ){
+                                    return;
+                                }
+
+                                // =================================
+                                // MATCH PLAYER 1
+                                // =================================
+
+                                currentData[first.uid] = {
+
+                                    ...currentData[first.uid],
+
+                                    status: "matched",
+
+                                    roomCode:
+                                        roomCode,
+
+                                    playerNumber: 1
+
+                                };
+
+                                // =================================
+                                // MATCH PLAYER 2
+                                // =================================
+
+                                currentData[second.uid] = {
+
+                                    ...currentData[second.uid],
+
+                                    status: "matched",
+
+                                    roomCode:
+                                        roomCode,
+
+                                    playerNumber: 2
+
+                                };
+
+                                return currentData;
+                            }
+                        );
+
+                    if(result.committed){
+
+                        console.log(
+                            "✅ Quick Match created:",
                             roomCode
                         );
 
-                    await set(
-                        roomRef,
-                        {
+                        // =================================
+                        // CREATE THE GAME ROOM
+                        // =================================
 
-                            host:
-                                playerId,
-
-                            guest:
-                                currentUser.uid,
-
-                            status:
-                                "playing",
-
-                            quickMatch:
-                                true,
-
-                            createdAt:
-                                Date.now()
-
-                        }
-                    );
-
-                    // ==========================
-                    // TELL PLAYER 1
-                    // ABOUT THE MATCH
-                    // ==========================
-
-                    await set(
-                        ref(
-                            database,
-                            "quickMatch/" +
-                            playerId
-                        ),
-                        {
-
-                            uid:
-                                playerId,
-
-                            status:
-                                "matched",
-
-                            roomCode:
+                        const roomRef =
+                            ref(
+                                database,
+                                "rooms/" +
                                 roomCode
+                            );
 
-                        }
-                    );
+                        await set(
+                            roomRef,
+                            {
+                                host:
+                                    player1.uid,
 
-                    // ==========================
-                    // CURRENT PLAYER = PLAYER 2
-                    // ==========================
+                                guest:
+                                    player2.uid,
 
-                    onlinePlayerNumber = 2;
+                                status:
+                                    "playing",
 
-                    onlineMode = true;
+                                quickMatch:
+                                    true,
 
-                    currentRoomCode =
-                        roomCode;
-
-                    onlineGameRef =
-                        ref(
-                            database,
-                            "rooms/" +
-                            roomCode +
-                            "/game"
+                                createdAt:
+                                    Date.now()
+                            }
                         );
 
-                    playerNameText.textContent =
-                        "PLAYER 2";
+                        console.log(
+                            "🏠 Quick Match room created:",
+                            roomCode
+                        );
 
-                    opponentNameText.textContent =
-                        "PLAYER 1";
+                    }else{
 
-                    onlineGameStarted =
-                        true;
+                        console.log(
+                            "ℹ️ Another player already matched them."
+                        );
 
-                    lobbyMessage.textContent =
-                        "🎮 Opponent found! Starting game...";
+                    }
 
-                    // ==========================
-                    // REMOVE CURRENT PLAYER
-                    // FROM QUEUE
-                    // ==========================
+                }catch(error){
 
-                    await set(
-                        ref(
-                            database,
-                            "quickMatch/" +
-                            currentUser.uid
-                        ),
-                        null
+                    console.error(
+                        "❌ Quick Match transaction failed:",
+                        error
                     );
-
-                    // ==========================
-// STOP SEARCH
-// ==========================
-
-stopQuickMatch();
-
-                    // ==========================
-                    // START PLAYER 2
-                    // ==========================
-
-                    startQuickMatchGame();
-
-                    return;
 
                 }
 
             }
         );
-
-    }catch(error){
-
-        console.error(
-            "❌ Quick Match error:",
-            error
-        );
-
-        lobbyMessage.textContent =
-            "Quick Match failed. Please try again.";
-
-        quickMatchActive =
-            false;
-
-    }
-
 }
 // =====================================
 // STICKER PANEL
@@ -1058,7 +1134,7 @@ function startQuickMatchGame(){
 // =====================================
 
 function stopQuickMatch(){
-  
+
     if(quickMatchListener){
         quickMatchListener();
         quickMatchListener = null;
@@ -1068,8 +1144,6 @@ function stopQuickMatch(){
         quickMatchFindListener();
         quickMatchFindListener = null;
     }
-
-    quickMatchActive = false;
 
     quickMatchActive = false;
 
@@ -1088,13 +1162,11 @@ function stopQuickMatch(){
 
         quickButton.textContent =
             "⚡ ONLINE QUICK MATCH";
-
     }
 
     console.log(
         "🛑 Quick Match stopped."
     );
-
 }
 // =====================================
 // CREATE ROOM
