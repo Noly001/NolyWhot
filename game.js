@@ -812,141 +812,159 @@ stickerOptions.forEach(
 // =====================================
 // LISTEN TO ONLINE GAME
 // =====================================
-
 function listenToOnlineGame(){
 
-    if(!onlineGameRef){
+if(!onlineGameRef){
 
-        console.error(
-            "❌ Online game reference is missing."
-        );
-
-        return;
-
-    }
-
-    onValue(
-        onlineGameRef,
-        (snapshot)=>{
-
-            if(!snapshot.exists()){
-
-                return;
-
-            }
-
-            const game =
-                snapshot.val();
-
-            // =================================
-            // SHARED DECK
-            // =================================
-
-            deck =
-                game.deck || [];
-
-            // =================================
-            // TOP CARD
-            // =================================
-
-            topCard =
-                game.topCard || null;
-
-// =================================
-// REQUESTED SHAPE
-// =================================
-
-requestedShape =
-    game.requestedShape || null;
-
-// =================================
-// RECEIVE STICKER
-// =================================
-
-const receivedSticker =
-    game.sticker || null;
-
-// =================================
-// DISPLAY NEW STICKER ONLY
-// =================================
-
-if(
-    receivedSticker &&
-    receivedSticker.id !== lastStickerId
-){
-
-    lastStickerId =
-        receivedSticker.id;
-
-    displaySticker(
-        receivedSticker.text
+    console.error(
+        "❌ Online game reference is missing."
     );
 
-}
-// =================================
-// GAME OVER
-// =================================            gameOver =
-                game.gameOver || false;
+    return;
 
-            // =================================
-            // PLAYER 2 HAND
-            // =================================
+}
+
+onValue(
+    onlineGameRef,
+    (snapshot)=>{
+
+        if(!snapshot.exists()){
+
+            return;
+
+        }
+
+        const game =
+            snapshot.val();
+
+        // =================================
+        // SHARED GAME DATA
+        // =================================
+
+        deck =
+            game.deck || [];
+
+        topCard =
+            game.topCard || null;
+
+        requestedShape =
+            game.requestedShape || null;
+
+        gameOver =
+            game.gameOver || false;
+
+        // =================================
+        // IMPORTANT:
+        // EACH PLAYER GETS THEIR OWN HAND
+        // =================================
+
+        if(onlinePlayerNumber === 1){
+
+            // PLAYER 1 PHONE
+
+            playerHand =
+                game.playerHand || [];
+
+            opponentHand =
+                game.opponentHand || [];
+
+            playerTurn =
+                game.playerTurn === 1;
+
+        }
+
+        else if(onlinePlayerNumber === 2){
+
+            // PLAYER 2 PHONE
 
             playerHand =
                 game.opponentHand || [];
 
-            // =================================
-            // PLAYER 1 HAND
-            // =================================
-
             opponentHand =
                 game.playerHand || [];
-
-            // =================================
-            // PLAYER 2 TURN
-            // =================================
 
             playerTurn =
                 game.playerTurn === 2;
 
-            // =================================
-            // UPDATE BOARD
-            // =================================
+        }
 
-            updateBoard();
+        else{
 
-            // =================================
-            // GAME OVER
-            // =================================
+            console.error(
+                "❌ Online player number is missing."
+            );
 
-            if(gameOver){
+            return;
 
-                clearInterval(timer);
+        }
 
-                return;
+        // =================================
+        // RECEIVE STICKER
+        // =================================
 
-            }
+        const receivedSticker =
+            game.sticker || null;
 
-            // =================================
-            // TIMER
-            // =================================
+        if(
+            receivedSticker &&
+            receivedSticker.id !== lastStickerId
+        ){
 
-            if(playerTurn){
+            lastStickerId =
+                receivedSticker.id;
 
-                startTimer();
-
-            }else{
-
-                clearInterval(timer);
-
-            }
-
-            console.log(
-                "✅ Quick Match game update received."
+            displaySticker(
+                receivedSticker.text
             );
 
         }
-    );
+
+        // =================================
+        // UPDATE BOARD
+        // =================================
+
+        updateBoard();
+
+        // =================================
+        // GAME OVER
+        // =================================
+
+        if(gameOver){
+
+            clearInterval(timer);
+
+            return;
+
+        }
+
+        // =================================
+        // TIMER
+        // =================================
+
+        if(playerTurn){
+
+            startTimer();
+
+        }else{
+
+            clearInterval(timer);
+
+        }
+
+        console.log(
+            "✅ Online game update received.",
+            "PLAYER:",
+            onlinePlayerNumber,
+            "YOUR TURN:",
+            playerTurn,
+            "YOUR CARDS:",
+            playerHand.length,
+            "OPPONENT CARDS:",
+            opponentHand.length
+        );
+
+    }
+);
 
 }
 // =====================================
