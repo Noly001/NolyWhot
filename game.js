@@ -812,159 +812,212 @@ stickerOptions.forEach(
 // =====================================
 // LISTEN TO ONLINE GAME
 // =====================================
+
 function listenToOnlineGame(){
 
-if(!onlineGameRef){
+    if(!onlineGameRef){
 
-    console.error(
-        "❌ Online game reference is missing."
-    );
-
-    return;
-
-}
-
-onValue(
-    onlineGameRef,
-    (snapshot)=>{
-
-        if(!snapshot.exists()){
-
-            return;
-
-        }
-
-        const game =
-            snapshot.val();
-
-        // =================================
-        // SHARED GAME DATA
-        // =================================
-
-        deck =
-            game.deck || [];
-
-        topCard =
-            game.topCard || null;
-
-        requestedShape =
-            game.requestedShape || null;
-
-        gameOver =
-            game.gameOver || false;
-
-        // =================================
-        // IMPORTANT:
-        // EACH PLAYER GETS THEIR OWN HAND
-        // =================================
-
-        if(onlinePlayerNumber === 1){
-
-            // PLAYER 1 PHONE
-
-            playerHand =
-                game.playerHand || [];
-
-            opponentHand =
-                game.opponentHand || [];
-
-            playerTurn =
-                game.playerTurn === 1;
-
-        }
-
-        else if(onlinePlayerNumber === 2){
-
-            // PLAYER 2 PHONE
-
-            playerHand =
-                game.opponentHand || [];
-
-            opponentHand =
-                game.playerHand || [];
-
-            playerTurn =
-                game.playerTurn === 2;
-
-        }
-
-        else{
-
-            console.error(
-                "❌ Online player number is missing."
-            );
-
-            return;
-
-        }
-
-        // =================================
-        // RECEIVE STICKER
-        // =================================
-
-        const receivedSticker =
-            game.sticker || null;
-
-        if(
-            receivedSticker &&
-            receivedSticker.id !== lastStickerId
-        ){
-
-            lastStickerId =
-                receivedSticker.id;
-
-            displaySticker(
-                receivedSticker.text
-            );
-
-        }
-
-        // =================================
-        // UPDATE BOARD
-        // =================================
-
-        updateBoard();
-
-        // =================================
-        // GAME OVER
-        // =================================
-
-        if(gameOver){
-
-            clearInterval(timer);
-
-            return;
-
-        }
-
-        // =================================
-        // TIMER
-        // =================================
-
-        if(playerTurn){
-
-            startTimer();
-
-        }else{
-
-            clearInterval(timer);
-
-        }
-
-        console.log(
-            "✅ Online game update received.",
-            "PLAYER:",
-            onlinePlayerNumber,
-            "YOUR TURN:",
-            playerTurn,
-            "YOUR CARDS:",
-            playerHand.length,
-            "OPPONENT CARDS:",
-            opponentHand.length
+        console.error(
+            "❌ Online game reference is missing."
         );
 
+        return;
+
     }
-);
+
+    onValue(
+        onlineGameRef,
+        (snapshot)=>{
+
+            if(!snapshot.exists()){
+
+                return;
+
+            }
+
+            const game =
+                snapshot.val();
+
+
+            // =================================
+            // SHARED GAME DATA
+            // =================================
+
+            deck =
+                game.deck || [];
+
+            topCard =
+                game.topCard || null;
+
+            requestedShape =
+                game.requestedShape || null;
+
+            gameOver =
+                game.gameOver || false;
+
+
+            // =================================
+            // SYNC ONLINE SCORES
+            // =================================
+
+            if(onlinePlayerNumber === 1){
+
+                playerScore =
+                    game.player1Score || 0;
+
+                opponentScore =
+                    game.player2Score || 0;
+
+            }
+
+            else if(onlinePlayerNumber === 2){
+
+                playerScore =
+                    game.player2Score || 0;
+
+                opponentScore =
+                    game.player1Score || 0;
+
+            }
+
+            updateScores();
+
+
+            // =================================
+            // IMPORTANT:
+            // EACH PLAYER GETS THEIR OWN HAND
+            // =================================
+
+            if(onlinePlayerNumber === 1){
+
+                // PLAYER 1 PHONE
+
+                playerHand =
+                    game.playerHand || [];
+
+                opponentHand =
+                    game.opponentHand || [];
+
+                playerTurn =
+                    game.playerTurn === 1;
+
+            }
+
+            else if(onlinePlayerNumber === 2){
+
+                // PLAYER 2 PHONE
+
+                playerHand =
+                    game.opponentHand || [];
+
+                opponentHand =
+                    game.playerHand || [];
+
+                playerTurn =
+                    game.playerTurn === 2;
+
+            }
+
+            else{
+
+                console.error(
+                    "❌ Online player number is missing."
+                );
+
+                return;
+
+            }
+
+
+            // =================================
+            // RECEIVE STICKER
+            // =================================
+
+            if(game.sticker){
+
+                const receivedSticker =
+                    game.sticker;
+
+                if(
+                    receivedSticker.id !==
+                    lastStickerId
+                ){
+
+                    lastStickerId =
+                        receivedSticker.id;
+
+                    displaySticker(
+                        receivedSticker.text
+                    );
+
+                }
+
+            }
+
+
+            // =================================
+            // UPDATE GAME BOARD
+            // =================================
+
+            updateBoard();
+
+// =================================
+// GAME OVER
+// =================================
+
+if(gameOver){
+
+    clearInterval(timer);
+
+    // ==============================
+    // ONLINE WIN / LOSS RESULT
+    // ==============================
+
+    if(onlineMode){
+
+        if(playerHand.length === 0){
+
+            gameResult.textContent =
+                "🎉 YOU WIN!";
+
+        }
+
+        else if(opponentHand.length === 0){
+
+            gameResult.textContent =
+                "😢 YOU LOSE!";
+
+        }
+
+    }
+
+    // ==============================
+    // SHOW RESULT
+    // ==============================
+
+    gameOverScreen.classList.remove(
+        "hidden"
+    );
+
+}
+            // =================================
+            // START TIMER
+            // =================================
+
+            else if(playerTurn){
+
+                startTurnTimer();
+
+            }
+
+            else{
+
+                clearInterval(timer);
+
+            }
+
+        }
+    );
 
 }
 // =====================================
@@ -1709,63 +1762,89 @@ function syncOnlineGame(){
 
     if(!onlineGameRef) return;
 
-    // Firebase always stores the game
-    // from Player 1's perspective.
+    // =================================
+    // FIREBASE ALWAYS STORES THE GAME
+    // FROM PLAYER 1'S PERSPECTIVE
+    // =================================
+
     const gameState = {
+
+        // ==============================
+        // SHARED DECK
+        // ==============================
 
         deck: deck,
 
-        // ==========================
+        // ==============================
         // PLAYER 1 HAND
-        // ==========================
+        // ==============================
 
         playerHand:
             onlinePlayerNumber === 1
             ? playerHand
             : opponentHand,
 
-        // ==========================
+        // ==============================
         // PLAYER 2 HAND
-        // ==========================
+        // ==============================
 
         opponentHand:
             onlinePlayerNumber === 1
             ? opponentHand
             : playerHand,
 
-        // ==========================
+        // ==============================
         // CENTER CARD
-        // ==========================
+        // ==============================
 
         topCard: topCard,
 
-        // ==========================
-        // WHOSE TURN?
-        // ==========================
+        // ==============================
+        // WHOSE TURN
+        // ==============================
 
         playerTurn:
             onlinePlayerNumber === 1
             ? (playerTurn ? 1 : 2)
             : (playerTurn ? 2 : 1),
 
-// ==========================
-// WHOT REQUESTED SHAPE
-// ==========================
+        // ==============================
+        // WHOT REQUESTED SHAPE
+        // ==============================
 
-requestedShape: requestedShape,
+        requestedShape: requestedShape,
 
-// ==========================
-// STICKER
-// ==========================
+        // ==============================
+        // STICKER
+        // ==============================
 
-sticker: currentSticker,
+        sticker: currentSticker,
 
-// ==========================
-// GAME OVER
-// ==========================
+        // ==============================
+        // GAME OVER
+        // ==============================
 
-gameOver: gameOver
+        gameOver: gameOver,
+
+        // ==============================
+        // SCORES
+        // ==============================
+
+        player1Score:
+            onlinePlayerNumber === 1
+            ? playerScore
+            : opponentScore,
+
+        player2Score:
+            onlinePlayerNumber === 1
+            ? opponentScore
+            : playerScore
+
     };
+
+    // =================================
+    // SAVE TO FIREBASE
+    // =================================
 
     set(onlineGameRef, gameState)
 
@@ -1976,23 +2055,16 @@ function startOnlineGame(){
     // ==========================
 
     const gameState = {
-
-        deck: deck,
-
-        playerHand: playerHand,
-
-        opponentHand: opponentHand,
-
-        topCard: topCard,
-
-        playerTurn: 1,
-
-        requestedShape: null,
-
-        gameOver: false
-
-    };
-
+    deck: deck,
+    playerHand: playerHand,
+    opponentHand: opponentHand,
+    topCard: topCard,
+    playerTurn: 1,
+    requestedShape: null,
+    gameOver: false,
+    player1Score: playerScore,
+    player2Score: opponentScore
+};
     // ==========================
     // SAVE GAME
     // ==========================
@@ -3042,37 +3114,114 @@ function startTimer(){
 
 function checkWinner(){
 
-    if(playerHand.length===0){
+    // =================================
+    // PLAYER WINS
+    // =================================
 
-        gameOver=true;
+    if(playerHand.length === 0){
+
+        gameOver = true;
 
         clearInterval(timer);
+
+        // ==============================
+        // UPDATE LOCAL SCORE
+        // ==============================
 
         playerScore++;
 
         updateScores();
 
-        gameResult.textContent="🎉 YOU WIN!";
+        // ==============================
+        // ONLINE RESULT
+        // ==============================
 
-        gameOverScreen.classList.remove("hidden");
+        if(onlineMode){
+
+            gameResult.textContent =
+                "🎉 YOU WIN!";
+
+        }else{
+
+            gameResult.textContent =
+                "🎉 YOU WIN!";
+
+        }
+
+        // ==============================
+        // SHOW RESULT
+        // ==============================
+
+        gameOverScreen.classList.remove(
+            "hidden"
+        );
+
+        // ==============================
+        // SYNC RESULT
+        // ==============================
+
+        if(onlineMode){
+
+            syncOnlineGame();
+
+        }
 
         return;
 
     }
 
-    if(opponentHand.length===0){
 
-        gameOver=true;
+    // =================================
+    // OPPONENT WINS
+    // =================================
+
+    if(opponentHand.length === 0){
+
+        gameOver = true;
 
         clearInterval(timer);
+
+        // ==============================
+        // UPDATE LOCAL SCORE
+        // ==============================
 
         opponentScore++;
 
         updateScores();
 
-        gameResult.textContent="💻 COMPUTER WINS!";
+        // ==============================
+        // ONLINE RESULT
+        // ==============================
 
-        gameOverScreen.classList.remove("hidden");
+        if(onlineMode){
+
+            gameResult.textContent =
+                "😢 YOU LOSE!";
+
+        }else{
+
+            gameResult.textContent =
+                "💻 COMPUTER WINS!";
+
+        }
+
+        // ==============================
+        // SHOW RESULT
+        // ==============================
+
+        gameOverScreen.classList.remove(
+            "hidden"
+        );
+
+        // ==============================
+        // SYNC RESULT
+        // ==============================
+
+        if(onlineMode){
+
+            syncOnlineGame();
+
+        }
 
         return;
 
@@ -3085,30 +3234,63 @@ function checkWinner(){
 
 function checkMarketWinner(){
 
-    // If the player can still play, continue the game.
+    // =================================
+    // CHECK IF PLAYER CAN STILL PLAY
+    // =================================
+
     if(playerHand.some(card => canPlay(card))){
+
         return;
+
     }
 
-    // If the computer can still play, continue the game.
+
+    // =================================
+    // CHECK IF OPPONENT CAN STILL PLAY
+    // =================================
+
     if(opponentHand.some(card => canPlay(card))){
+
         return;
+
     }
+
+
+    // =================================
+    // CALCULATE CARD TOTALS
+    // =================================
 
     let playerTotal = 0;
+
     let opponentTotal = 0;
 
+
     playerHand.forEach(card => {
+
         playerTotal += card.number;
+
     });
 
+
     opponentHand.forEach(card => {
+
         opponentTotal += card.number;
+
     });
+
+
+    // =================================
+    // GAME OVER
+    // =================================
 
     gameOver = true;
 
     clearInterval(timer);
+
+
+    // =================================
+    // PLAYER WINS
+    // =================================
 
     if(playerTotal < opponentTotal){
 
@@ -3116,28 +3298,96 @@ function checkMarketWinner(){
 
         updateScores();
 
-        gameResult.textContent =
-            "🎉 YOU WIN!\nYour Total: " + playerTotal +
-            " | Computer Total: " + opponentTotal;
 
-    }else if(opponentTotal < playerTotal){
+        if(onlineMode){
+
+            gameResult.textContent =
+                "🎉 YOU WIN!\n" +
+                "Your Total: " +
+                playerTotal +
+                " | Opponent Total: " +
+                opponentTotal;
+
+        }else{
+
+            gameResult.textContent =
+                "🎉 YOU WIN!\n" +
+                "Your Total: " +
+                playerTotal +
+                " | Computer Total: " +
+                opponentTotal;
+
+        }
+
+    }
+
+
+    // =================================
+    // OPPONENT WINS
+    // =================================
+
+    else if(opponentTotal < playerTotal){
 
         opponentScore++;
 
         updateScores();
 
-        gameResult.textContent =
-            "💻 COMPUTER WINS!\nYour Total: " + playerTotal +
-            " | Computer Total: " + opponentTotal;
 
-    }else{
+        if(onlineMode){
 
-        gameResult.textContent =
-            "🤝 DRAW!\nBoth Total: " + playerTotal;
+            gameResult.textContent =
+                "😢 YOU LOSE!\n" +
+                "Your Total: " +
+                playerTotal +
+                " | Opponent Total: " +
+                opponentTotal;
+
+        }else{
+
+            gameResult.textContent =
+                "💻 COMPUTER WINS!\n" +
+                "Your Total: " +
+                playerTotal +
+                " | Computer Total: " +
+                opponentTotal;
+
+        }
 
     }
 
-    gameOverScreen.classList.remove("hidden");
+
+    // =================================
+    // DRAW
+    // =================================
+
+    else{
+
+        gameResult.textContent =
+            "🤝 DRAW!\n" +
+            "Both Total: " +
+            playerTotal;
+
+    }
+
+
+    // =================================
+    // SHOW RESULT
+    // =================================
+
+    gameOverScreen.classList.remove(
+        "hidden"
+    );
+
+
+    // =================================
+    // SYNC ONLINE RESULT
+    // =================================
+
+    if(onlineMode){
+
+        syncOnlineGame();
+
+    }
 
 }
 // =====================================
