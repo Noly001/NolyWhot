@@ -1705,11 +1705,32 @@ const messageText = document.getElementById("message");
 const shapeChooser = document.getElementById("shapeChooser");
 const shapeButtons = document.querySelectorAll(".shapeButton");
 
-const gameOverScreen = document.getElementById("gameOverScreen");
-const gameResult = document.getElementById("gameResult");
+const gameOverScreen =
+    document.getElementById("gameOverScreen");
 
-const restartButton = document.getElementById("restartButton");
-const homeButton = document.getElementById("homeButton");
+const gameResult =
+    document.getElementById("gameResult");
+
+const rematchButton =
+    document.getElementById("rematchButton");
+
+const rematchStatus =
+    document.getElementById("rematchStatus");
+
+const rematchRequest =
+    document.getElementById("rematchRequest");
+
+const rematchRequestText =
+    document.getElementById("rematchRequestText");
+
+const acceptRematchButton =
+    document.getElementById("acceptRematchButton");
+
+const declineRematchButton =
+    document.getElementById("declineRematchButton");
+
+const homeButton =
+    document.getElementById("homeButton");
 
 // ---------- GAME DATA ----------
 
@@ -3390,17 +3411,6 @@ function checkMarketWinner(){
     }
 
 }
-// =====================================
-// RESTART
-// =====================================
-
-restartButton.onclick=function(){
-
-    gameOverScreen.classList.add("hidden");
-
-    startGame();
-
-};
 
 // =====================================
 // HOME
@@ -3411,7 +3421,108 @@ homeButton.onclick=function(){
     window.location.href="index.html";
 
 };
+// =====================================
+// ONLINE REMATCH — SEND REQUEST
+// =====================================
 
+if(rematchButton){
+
+    rematchButton.onclick = async function(){
+
+        // ==============================
+        // REMATCH ONLY WORKS ONLINE
+        // ==============================
+
+        if(!onlineMode){
+
+            rematchStatus.textContent =
+                "Rematch is available for online games.";
+
+            return;
+
+        }
+
+        // ==============================
+        // CHECK ROOM
+        // ==============================
+
+        if(!currentRoomCode){
+
+            rematchStatus.textContent =
+                "❌ Online room not found.";
+
+            return;
+
+        }
+
+        // ==============================
+        // WAIT FOR FIREBASE
+        // ==============================
+
+        try{
+
+            await firebaseReady;
+
+            // ==============================
+            // REMATCH REFERENCE
+            // ==============================
+
+            const rematchRef =
+                ref(
+                    database,
+                    "rooms/" +
+                    currentRoomCode +
+                    "/rematch"
+                );
+
+            // ==============================
+            // SEND REQUEST
+            // ==============================
+
+            await set(
+                rematchRef,
+                {
+                    status: "pending",
+
+                    requester:
+                        onlinePlayerNumber,
+
+                    requestId:
+                        Date.now()
+                }
+            );
+
+            // ==============================
+            // UPDATE BUTTON
+            // ==============================
+
+            rematchButton.disabled = true;
+
+            rematchStatus.textContent =
+                "🔄 Rematch request sent...\n" +
+                "Waiting for opponent...";
+
+            console.log(
+                "🔄 Rematch request sent."
+            );
+
+        }catch(error){
+
+            console.error(
+                "❌ Rematch request failed:",
+                error
+            );
+
+            rematchStatus.textContent =
+                "❌ Could not send rematch request.";
+
+            rematchButton.disabled = false;
+
+        }
+
+    };
+
+}
 // =====================================
 // START GAME
 // =====================================
