@@ -1283,7 +1283,7 @@ opponentNameText.textContent = "PLAYER 2";
 
         onlineGameRef =
             ref(database, "rooms/" + roomCode + "/game");
-
+    listenForRematch();
         roomCodeText.textContent = roomCode;
 
         roomCodeDisplay.classList.remove("hidden");
@@ -1512,7 +1512,7 @@ opponentNameText.textContent = "PLAYER 1";
                 database,
                 "rooms/" + roomCode + "/game"
             );
-
+   listenForRematch();
         // ==========================
         // IMPORTANT:
         // REGISTER PLAYER 2
