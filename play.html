@@ -343,29 +343,58 @@ Star
 
 
 <!-- ===========================
-GAME OVER
+     GAME OVER
 =========================== -->
 
 <div
-id="gameOverScreen"
-class="hidden">
+    id="gameOverScreen"
+    class="hidden">
 
-<h1 id="gameResult">
-You Win
-</h1>
+    <h1 id="gameResult">
+        You Win
+    </h1>
 
-<button id="restartButton">
-Play Again
-</button>
+    <!-- ===========================
+         REMATCH
+    =========================== -->
 
-<button id="homeButton">
-Home
-</button>
+    <button id="rematchButton">
+        🔄 REMATCH
+    </button>
+
+    <p id="rematchStatus"></p>
+
+    <!-- ===========================
+         REMATCH REQUEST
+    =========================== -->
+
+    <div
+        id="rematchRequest"
+        style="display:none;">
+
+        <p id="rematchRequestText">
+            Your opponent wants a rematch.
+        </p>
+
+        <button id="acceptRematchButton">
+            ✅ ACCEPT
+        </button>
+
+        <button id="declineRematchButton">
+            ❌ DECLINE
+        </button>
+
+    </div>
+
+    <!-- ===========================
+         HOME
+    =========================== -->
+
+    <button id="homeButton">
+        🏠 HOME
+    </button>
 
 </div>
-
-</div>
-
 <!-- ===========================
      MODE CONTROL
 =========================== -->
