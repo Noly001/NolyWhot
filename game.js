@@ -1184,6 +1184,7 @@ function startQuickMatchGame(){
 // ==========================
 
 listenToOnlineGame();
+listenForRematch();
 
 // ==========================
 // PLAYER 1 CREATES GAME
@@ -3427,6 +3428,7 @@ homeButton.onclick=function(){
 
 let rematchStarting = false;
 let lastRematchRequestId = null;
+let rematchListener = null;
 
 
 // =====================================
@@ -3443,7 +3445,23 @@ function listenForRematch(){
 
     if(!currentRoomCode){
 
+        console.log(
+            "⚠️ Rematch listener waiting for room..."
+        );
+
         return;
+
+    }
+
+    // ==============================
+    // REMOVE OLD LISTENER
+    // ==============================
+
+    if(rematchListener){
+
+        rematchListener();
+
+        rematchListener = null;
 
     }
 
@@ -3455,252 +3473,271 @@ function listenForRematch(){
             "/rematch"
         );
 
-    onValue(
-        rematchRef,
-        (snapshot)=>{
+    console.log(
+        "🔄 Starting rematch listener for room:",
+        currentRoomCode
+    );
 
-            // ==========================
-            // NO REMATCH REQUEST
-            // ==========================
+    rematchListener =
+        onValue(
+            rematchRef,
+            (snapshot)=>{
 
-            if(!snapshot.exists()){
-
-                return;
-
-            }
-
-            const rematch =
-                snapshot.val();
-
-            if(!rematch){
-
-                return;
-
-            }
-
-            // ==========================
-            // NEW REQUEST
-            // ==========================
-
-            if(
-                rematch.status === "pending"
-            ){
-
-                // Don't show your own request
-                // as an incoming request
-
-                if(
-                    Number(rematch.requester) ===
-                    Number(onlinePlayerNumber)
-                ){
+                if(!snapshot.exists()){
 
                     return;
 
                 }
 
-                // Prevent duplicate display
+                const rematch =
+                    snapshot.val();
 
-                if(
-                    lastRematchRequestId ===
-                    rematch.requestId
-                ){
+                if(!rematch){
 
                     return;
 
                 }
 
-                lastRematchRequestId =
-                    rematch.requestId;
-
-                // ==========================
-                // SHOW REQUEST
-                // ==========================
-
-                if(gameOverScreen){
-
-                    gameOverScreen.classList.remove(
-                        "hidden"
-                    );
-
-                }
-
-                if(rematchRequest){
-
-                    rematchRequest.style.display =
-                        "block";
-
-                }
-
-                if(rematchRequestText){
-
-                    rematchRequestText.textContent =
-                        "🔄 Your opponent wants a rematch.";
-
-                }
-
-                if(rematchButton){
-
-                    rematchButton.style.display =
-                        "none";
-
-                }
-
-                if(rematchStatus){
-
-                    rematchStatus.textContent =
-                        "";
-
-                }
-
-                console.log(
-                    "🔄 Rematch request received."
-                );
-
-            }
-
-
-            // ==========================
-            // REMATCH ACCEPTED
-            // ==========================
-
-            if(
-                rematch.status === "accepted"
-            ){
-
-                console.log(
-                    "✅ Rematch accepted."
-                );
-
-                // ==========================
-                // CLOSE REQUEST
-                // ==========================
-
-                if(rematchRequest){
-
-                    rematchRequest.style.display =
-                        "none";
-
-                }
-
-                if(rematchButton){
-
-                    rematchButton.style.display =
-                        "block";
-
-                    rematchButton.disabled =
-                        true;
-
-                }
-
-                if(rematchStatus){
-
-                    rematchStatus.textContent =
-                        "🎮 Starting rematch...";
-
-                }
-
-                // ==========================
-                // HIDE GAME OVER
-                // ==========================
-
-                if(gameOverScreen){
-
-                    gameOverScreen.classList.add(
-                        "hidden"
-                    );
-
-                }
-
-                // ==========================
-                // RESET LOCAL GAME STATE
-                // ==========================
-
-                clearInterval(timer);
-
-                gameOver = false;
-
-                requestedShape = null;
-
-                pickTwoActive = false;
-
-                generalMarketActive = false;
-
-                currentSticker = null;
-
-                lastStickerId = null;
-
-                // ==========================
-                // PLAYER 1 CREATES NEW ROUND
-                // ==========================
+                // =================================
+                // PENDING REMATCH REQUEST
+                // =================================
 
                 if(
-                    Number(onlinePlayerNumber) === 1 &&
-                    !rematchStarting
+                    rematch.status === "pending"
                 ){
 
-                    rematchStarting = true;
+                    // ==============================
+                    // DON'T SHOW YOUR OWN REQUEST
+                    // ==============================
+
+                    if(
+                        Number(rematch.requester) ===
+                        Number(onlinePlayerNumber)
+                    ){
+
+                        console.log(
+                            "🔄 This is my own rematch request."
+                        );
+
+                        return;
+
+                    }
+
+                    // ==============================
+                    // PREVENT DUPLICATE REQUEST
+                    // ==============================
+
+                    if(
+                        lastRematchRequestId ===
+                        rematch.requestId
+                    ){
+
+                        return;
+
+                    }
+
+                    lastRematchRequestId =
+                        rematch.requestId;
 
                     console.log(
-                        "🎮 Player 1 creating rematch game..."
+                        "🔔 INCOMING REMATCH REQUEST:",
+                        rematch
                     );
 
-                    startOnlineGame();
+                    // ==============================
+                    // SHOW GAME OVER SCREEN
+                    // ==============================
 
-                    // Allow another rematch
-                    // request after this round ends
+                    if(gameOverScreen){
 
-                    setTimeout(
-                        ()=>{
-                            rematchStarting = false;
-                        },
-                        1000
+                        gameOverScreen.classList.remove(
+                            "hidden"
+                        );
+
+                    }
+
+                    // ==============================
+                    // SHOW ACCEPT / DECLINE
+                    // ==============================
+
+                    if(rematchRequest){
+
+                        rematchRequest.style.display =
+                            "block";
+
+                    }
+
+                    if(rematchRequestText){
+
+                        rematchRequestText.textContent =
+                            "🔄 Your opponent wants a rematch.";
+
+                    }
+
+                    // ==============================
+                    // HIDE REMATCH BUTTON
+                    // ==============================
+
+                    if(rematchButton){
+
+                        rematchButton.style.display =
+                            "none";
+
+                    }
+
+                    if(rematchStatus){
+
+                        rematchStatus.textContent =
+                            "";
+
+                    }
+
+                    console.log(
+                        "✅ Rematch request displayed to opponent."
                     );
+
+                }
+
+
+                // =================================
+                // REMATCH ACCEPTED
+                // =================================
+
+                if(
+                    rematch.status === "accepted"
+                ){
+
+                    console.log(
+                        "✅ Rematch accepted."
+                    );
+
+                    // ==============================
+                    // CLOSE REQUEST
+                    // ==============================
+
+                    if(rematchRequest){
+
+                        rematchRequest.style.display =
+                            "none";
+
+                    }
+
+                    if(rematchButton){
+
+                        rematchButton.style.display =
+                            "block";
+
+                        rematchButton.disabled =
+                            true;
+
+                    }
+
+                    if(rematchStatus){
+
+                        rematchStatus.textContent =
+                            "🎮 Starting rematch...";
+
+                    }
+
+                    // ==============================
+                    // HIDE GAME OVER SCREEN
+                    // ==============================
+
+                    if(gameOverScreen){
+
+                        gameOverScreen.classList.add(
+                            "hidden"
+                        );
+
+                    }
+
+                    // ==============================
+                    // RESET LOCAL GAME STATE
+                    // ==============================
+
+                    clearInterval(timer);
+
+                    gameOver = false;
+
+                    requestedShape = null;
+
+                    pickTwoActive = false;
+
+                    generalMarketActive = false;
+
+                    currentSticker = null;
+
+                    lastStickerId = null;
+
+                    // ==============================
+                    // PLAYER 1 CREATES NEW GAME
+                    // ==============================
+
+                    if(
+                        Number(onlinePlayerNumber) === 1 &&
+                        !rematchStarting
+                    ){
+
+                        rematchStarting = true;
+
+                        console.log(
+                            "🎮 Player 1 creating rematch game..."
+                        );
+
+                        startOnlineGame();
+
+                        setTimeout(
+                            ()=>{
+                                rematchStarting = false;
+                            },
+                            1000
+                        );
+
+                    }
+
+                }
+
+
+                // =================================
+                // REMATCH DECLINED
+                // =================================
+
+                if(
+                    rematch.status === "declined"
+                ){
+
+                    console.log(
+                        "❌ Rematch declined."
+                    );
+
+                    if(rematchRequest){
+
+                        rematchRequest.style.display =
+                            "none";
+
+                    }
+
+                    if(rematchButton){
+
+                        rematchButton.style.display =
+                            "block";
+
+                        rematchButton.disabled =
+                            false;
+
+                    }
+
+                    if(rematchStatus){
+
+                        rematchStatus.textContent =
+                            "❌ Opponent declined the rematch.";
+
+                    }
 
                 }
 
             }
-
-
-            // ==========================
-            // REMATCH DECLINED
-            // ==========================
-
-            if(
-                rematch.status === "declined"
-            ){
-
-                console.log(
-                    "❌ Rematch declined."
-                );
-
-                if(rematchRequest){
-
-                    rematchRequest.style.display =
-                        "none";
-
-                }
-
-                if(rematchButton){
-
-                    rematchButton.style.display =
-                        "block";
-
-                    rematchButton.disabled =
-                        false;
-
-                }
-
-                if(rematchStatus){
-
-                    rematchStatus.textContent =
-                        "❌ Opponent declined the rematch.";
-
-                }
-
-            }
-
-        }
-    );
+        );
 
 }
 
@@ -3712,10 +3749,6 @@ function listenForRematch(){
 if(rematchButton){
 
     rematchButton.onclick = async function(){
-
-        // ==========================
-        // ONLINE ONLY
-        // ==========================
 
         if(!onlineMode){
 
@@ -3729,10 +3762,6 @@ if(rematchButton){
             return;
 
         }
-
-        // ==========================
-        // CHECK ROOM
-        // ==========================
 
         if(!currentRoomCode){
 
@@ -3759,10 +3788,6 @@ if(rematchButton){
                     "/rematch"
                 );
 
-            // ==========================
-            // SEND REQUEST
-            // ==========================
-
             await set(
                 rematchRef,
                 {
@@ -3775,10 +3800,6 @@ if(rematchButton){
                         Date.now()
                 }
             );
-
-            // ==========================
-            // UPDATE UI
-            // ==========================
 
             rematchButton.disabled =
                 true;
@@ -3970,12 +3991,6 @@ if(declineRematchButton){
 
 }
 
-
-// =====================================
-// START REMATCH LISTENER
-// =====================================
-
-listenForRematch();
 // =====================================
 // START GAME
 // =====================================
