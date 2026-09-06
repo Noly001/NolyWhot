@@ -3639,36 +3639,57 @@ function listenForRematch(){
 
                     }
 
-                    // ==============================
-                    // HIDE GAME OVER SCREEN
-                    // ==============================
+                    // // ==============================
+// HIDE GAME OVER SCREEN
+// ==============================
 
-                    if(gameOverScreen){
+if(gameOverScreen){
 
-                        gameOverScreen.classList.add(
-                            "hidden"
-                        );
+    gameOverScreen.classList.add(
+        "hidden"
+    );
 
-                    }
+}
 
-                    // ==============================
-                    // RESET LOCAL GAME STATE
-                    // ==============================
+// ==============================
+// RESET LOCAL GAME STATE
+// ==============================
 
-                    clearInterval(timer);
+clearInterval(timer);
 
-                    gameOver = false;
+// ==============================
+// RESET REMATCH UI
+// ==============================
 
-                    requestedShape = null;
+if(rematchButton){
 
-                    pickTwoActive = false;
+    rematchButton.disabled = false;
 
-                    generalMarketActive = false;
+}
 
-                    currentSticker = null;
+if(rematchStatus){
 
-                    lastStickerId = null;
+    rematchStatus.textContent = "";
 
+}
+
+if(rematchRequest){
+
+    rematchRequest.style.display = "none";
+
+}
+
+gameOver = false;
+
+requestedShape = null;
+
+pickTwoActive = false;
+
+generalMarketActive = false;
+
+currentSticker = null;
+
+lastStickerId = null;
                     // ==============================
                     // PLAYER 1 CREATES NEW GAME
                     // ==============================
