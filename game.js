@@ -4179,3 +4179,50 @@ if (modeSelection) {
     }
 
 }
+// =====================================
+// VOICE CHAT - MICROPHONE
+// =====================================
+
+const voiceChatButton =
+    document.getElementById("voiceChatButton");
+
+const voiceChatStatus =
+    document.getElementById("voiceChatStatus");
+
+let localAudioStream = null;
+
+if (voiceChatButton) {
+
+    voiceChatButton.addEventListener("click", async function() {
+
+        try {
+
+            // Request microphone access
+            localAudioStream =
+                await navigator.mediaDevices.getUserMedia({
+                    audio: true
+                });
+
+            console.log("🎤 Microphone permission granted.");
+
+            voiceChatStatus.textContent =
+                "🎤 Microphone on";
+
+            voiceChatButton.textContent =
+                "🔇 VOICE CHAT ON";
+
+        } catch (error) {
+
+            console.error(
+                "❌ Microphone access failed:",
+                error
+            );
+
+            voiceChatStatus.textContent =
+                "❌ Microphone access denied";
+
+        }
+
+    });
+
+}
