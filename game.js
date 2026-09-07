@@ -8,7 +8,8 @@ import {
     ref,
     set,
     onValue,
-    runTransaction
+    runTransaction,
+    push
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
@@ -4269,18 +4270,311 @@ async function createVoicePeerConnection() {
 
     };
 
-    voicePeerConnection.onconnectionstatechange =
-        function() {
+voicePeerConnection.onconnectionstatechange =
+    function() {
 
-            console.log(
-                "🎧 Voice connection:",
-                voicePeerConnection.connectionState
+        console.log(
+            "🎧 Voice connection:",
+            voicePeerConnection.connectionState
+        );
+
+    };
+
+// =====================================
+// VOICE CHAT - ICE CANDIDATES
+// =====================================
+
+voicePeerConnection.onicecandidate =
+    function(event) {
+
+        if (
+            !event.candidate ||
+            !voiceSignalingRef ||
+            !currentUser
+        ) {
+            return;
+        }
+
+        const candidateType =
+            onlinePlayerNumber === 1
+                ? "offerCandidates"
+                : "answerCandidates";
+
+        const candidateRef =
+            push(
+                ref(
+                    database,
+                    "rooms/" +
+                    currentRoomCode +
+                    "/voiceChat/" +
+                    candidateType
+                )
             );
 
-        };
+        set(
+            candidateRef,
+            event.candidate.toJSON()
+        );
 
-    return voicePeerConnection;
+        console.log(
+            "🧊 ICE candidate sent:",
+            candidateType
+        );
+
+    };
+
+return voicePeerConnection;
 }
+// =====================================
+// VOICE CHAT - START CALL
+// =====================================
+
+async function startVoiceCall() {
+
+    if (!currentRoomCode) {
+
+        console.log(
+            "⚠️ Cannot start voice chat: no room."
+        );
+
+        voiceChatStatus.textContent =
+            "⚠️ Join an online game first";
+
+        return;
+    }
+
+    if (!voiceSignalingRef) {
+
+        setupVoiceSignaling();
+
+    }
+
+    const peerConnection =
+        await createVoicePeerConnection();
+
+    console.log(
+        "🎧 Starting voice call as Player",
+        onlinePlayerNumber
+    );
+
+    // =================================
+    // PLAYER 1 CREATES OFFER
+    // =================================
+
+    if (onlinePlayerNumber === 1) {
+
+        const offer =
+            await peerConnection.createOffer();
+
+        await peerConnection.setLocalDescription(
+            offer
+        );
+
+        await set(
+            ref(
+                database,
+                "rooms/" +
+                currentRoomCode +
+                "/voiceChat/offer"
+            ),
+            {
+                type: offer.type,
+                sdp: offer.sdp
+            }
+        );
+
+        console.log(
+            "📡 Voice offer sent."
+        );
+
+    }
+
+}
+// =================================
+// PLAYER 1 LISTENS FOR ANSWER
+// =================================
+
+const answerRef =
+    ref(
+        database,
+        "rooms/" +
+        currentRoomCode +
+        "/voiceChat/answer"
+    );
+
+onValue(answerRef, async function(snapshot) {
+
+    const answer = snapshot.val();
+
+    if (!answer) {
+        return;
+    }
+
+    console.log(
+        "📡 Voice answer received."
+    );
+
+    if (
+        !peerConnection.currentRemoteDescription
+    ) {
+
+        await peerConnection.setRemoteDescription(
+            new RTCSessionDescription(answer)
+        );
+
+        console.log(
+            "✅ Voice remote description set."
+        );
+
+    }
+
+});
+// =====================================
+// VOICE CHAT - LISTEN FOR OFFER
+// =====================================
+
+function listenForVoiceOffer() {
+
+    if (!voiceSignalingRef) {
+        setupVoiceSignaling();
+    }
+
+    if (!voiceSignalingRef) {
+        return;
+    }
+
+    if (onlinePlayerNumber !== 2) {
+        return;
+    }
+
+    const offerRef =
+        ref(
+            database,
+            "rooms/" +
+            currentRoomCode +
+            "/voiceChat/offer"
+        );
+
+    onValue(offerRef, async function(snapshot) {
+
+        const offer = snapshot.val();
+
+        if (!offer) {
+            return;
+        }
+
+        console.log(
+            "📡 Voice offer received."
+        );
+
+        const peerConnection =
+            await createVoicePeerConnection();
+
+        await peerConnection.setRemoteDescription(
+            new RTCSessionDescription(offer)
+        );
+
+        const answer =
+            await peerConnection.createAnswer();
+
+        await peerConnection.setLocalDescription(
+            answer
+        );
+
+        await set(
+            ref(
+                database,
+                "rooms/" +
+                currentRoomCode +
+                "/voiceChat/answer"
+            ),
+            {
+                type: answer.type,
+                sdp: answer.sdp
+            }
+        );
+
+        console.log(
+            "📡 Voice answer sent."
+        );
+
+    });
+}
+// =====================================
+// VOICE CHAT - LISTEN FOR ICE CANDIDATES
+// =====================================
+
+function listenForVoiceCandidates() {
+
+    if (!currentRoomCode) {
+        return;
+    }
+
+    const candidateType =
+        onlinePlayerNumber === 1
+            ? "answerCandidates"
+            : "offerCandidates";
+
+    const candidatesRef =
+        ref(
+            database,
+            "rooms/" +
+            currentRoomCode +
+            "/voiceChat/" +
+            candidateType
+        );
+
+    onValue(
+        candidatesRef,
+        async function(snapshot) {
+
+            if (!voicePeerConnection) {
+                return;
+            }
+
+            const candidates =
+                snapshot.val();
+
+            if (!candidates) {
+                return;
+            }
+
+            for (
+                const key in candidates
+            ) {
+
+                const candidate =
+                    candidates[key];
+
+                try {
+
+                    await voicePeerConnection
+                        .addIceCandidate(
+                            new RTCIceCandidate(
+                                candidate
+                            )
+                        );
+
+                    console.log(
+                        "🧊 ICE candidate received."
+                    );
+
+                } catch (error) {
+
+                    console.error(
+                        "❌ Failed to add ICE candidate:",
+                        error
+                    );
+
+                }
+
+            }
+
+        }
+    );
+
+}
+  
 if (voiceChatButton) {
 
     voiceChatButton.addEventListener("click", async function() {
@@ -4311,6 +4605,14 @@ voiceMicEnabled = true;
 console.log(
     "🎤 Microphone added to WebRTC."
 );
+          // Start WebRTC voice signaling
+await startVoiceCall();
+
+if (onlinePlayerNumber === 2) {
+    listenForVoiceOffer();
+}
+
+listenForVoiceCandidates();
             console.log("🎤 Microphone permission granted.");
 
             voiceChatStatus.textContent =
