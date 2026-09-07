@@ -4576,10 +4576,72 @@ function listenForVoiceCandidates() {
     );
 
 }
-  
+  // =====================================
+// VOICE CHAT - END CALL
+// =====================================
+
+function stopVoiceCall() {
+
+    console.log("🔇 Ending voice chat...");
+
+    // Stop microphone
+    if (localAudioStream) {
+
+        localAudioStream
+            .getTracks()
+            .forEach(function(track) {
+                track.stop();
+            });
+
+        localAudioStream = null;
+    }
+
+    // Close WebRTC connection
+    if (voicePeerConnection) {
+
+        voicePeerConnection.close();
+
+        voicePeerConnection = null;
+    }
+
+    // Remove remote audio
+    const remoteAudio =
+        document.getElementById("remoteAudio");
+
+    if (remoteAudio) {
+
+        remoteAudio.srcObject = null;
+    }
+
+    remoteAudioStream = null;
+    voiceMicEnabled = false;
+
+    // Update UI
+    if (voiceChatStatus) {
+
+        voiceChatStatus.textContent =
+            "🔇 Voice Chat Off";
+    }
+
+    if (voiceChatButton) {
+
+        voiceChatButton.textContent =
+            "🎤 VOICE CHAT";
+    }
+
+    console.log("✅ Voice chat ended.");
+}
 if (voiceChatButton) {
 
     voiceChatButton.addEventListener("click", async function() {
+
+        // If voice chat is already ON, turn it OFF
+        if (voiceMicEnabled) {
+
+            stopVoiceCall();
+
+            return;
+        }
 
         try {
 
