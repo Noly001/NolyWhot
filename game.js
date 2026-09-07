@@ -2008,7 +2008,7 @@ function startGame(){
 // =====================================
 
 function startOnlineGame(){
-
+setupVoiceSignaling();
     console.log("🌐 Creating shared online game...");
 
     clearInterval(timer);
@@ -4180,6 +4180,20 @@ if (modeSelection) {
 
 }
 // =====================================
+// VOICE CHAT - WEBRTC
+// =====================================
+
+let voicePeerConnection = null;
+let remoteAudioStream = null;
+
+const voiceConfiguration = {
+    iceServers: [
+        {
+            urls: "stun:stun.l.google.com:19302"
+        }
+    ]
+};
+// =====================================
 // VOICE CHAT - MICROPHONE
 // =====================================
 
@@ -4190,7 +4204,83 @@ const voiceChatStatus =
     document.getElementById("voiceChatStatus");
 
 let localAudioStream = null;
+let voiceMicEnabled = false;
+let voiceSignalingRef = null;
+function setupVoiceSignaling() {
 
+    if (!currentRoomCode) {
+
+        console.log(
+            "⚠️ No room code available for voice chat."
+        );
+
+        return null;
+    }
+
+    voiceSignalingRef =
+        ref(
+            database,
+            "rooms/" +
+            currentRoomCode +
+            "/voiceChat"
+        );
+
+    console.log(
+        "🎧 Voice signaling ready:",
+        currentRoomCode
+    );
+
+    return voiceSignalingRef;
+}
+async function createVoicePeerConnection() {
+
+    if (voicePeerConnection) {
+        return voicePeerConnection;
+    }
+
+    voicePeerConnection =
+        new RTCPeerConnection(voiceConfiguration);
+
+    voicePeerConnection.ontrack = function(event) {
+
+        console.log("🔊 Remote voice received.");
+
+        remoteAudioStream =
+            event.streams[0];
+
+        const remoteAudio =
+            document.getElementById("remoteAudio");
+
+        if (remoteAudio) {
+
+            remoteAudio.srcObject =
+                remoteAudioStream;
+
+            remoteAudio.play().catch(function(error) {
+
+                console.log(
+                    "🔊 Remote audio waiting for user interaction.",
+                    error
+                );
+
+            });
+
+        }
+
+    };
+
+    voicePeerConnection.onconnectionstatechange =
+        function() {
+
+            console.log(
+                "🎧 Voice connection:",
+                voicePeerConnection.connectionState
+            );
+
+        };
+
+    return voicePeerConnection;
+}
 if (voiceChatButton) {
 
     voiceChatButton.addEventListener("click", async function() {
@@ -4202,7 +4292,25 @@ if (voiceChatButton) {
                 await navigator.mediaDevices.getUserMedia({
                     audio: true
                 });
+const peerConnection =
+    await createVoicePeerConnection();
 
+localAudioStream
+    .getTracks()
+    .forEach(function(track) {
+
+        peerConnection.addTrack(
+            track,
+            localAudioStream
+        );
+
+    });
+
+voiceMicEnabled = true;
+
+console.log(
+    "🎤 Microphone added to WebRTC."
+);
             console.log("🎤 Microphone permission granted.");
 
             voiceChatStatus.textContent =
