@@ -4387,48 +4387,50 @@ async function startVoiceCall() {
             "📡 Voice offer sent."
         );
 
+        // =================================
+        // PLAYER 1 LISTENS FOR ANSWER
+        // =================================
+
+        const answerRef =
+            ref(
+                database,
+                "rooms/" +
+                currentRoomCode +
+                "/voiceChat/answer"
+            );
+
+        onValue(answerRef, async function(snapshot) {
+
+            const answer = snapshot.val();
+
+            if (!answer) {
+                return;
+            }
+
+            console.log(
+                "📡 Voice answer received."
+            );
+
+            if (
+                !peerConnection.currentRemoteDescription
+            ) {
+
+                await peerConnection.setRemoteDescription(
+                    new RTCSessionDescription(answer)
+                );
+
+                console.log(
+                    "✅ Voice remote description set."
+                );
+
+            }
+
+        });
+
     }
 
 }
-// =================================
-// PLAYER 1 LISTENS FOR ANSWER
-// =================================
 
-const answerRef =
-    ref(
-        database,
-        "rooms/" +
-        currentRoomCode +
-        "/voiceChat/answer"
-    );
-
-onValue(answerRef, async function(snapshot) {
-
-    const answer = snapshot.val();
-
-    if (!answer) {
-        return;
-    }
-
-    console.log(
-        "📡 Voice answer received."
-    );
-
-    if (
-        !peerConnection.currentRemoteDescription
-    ) {
-
-        await peerConnection.setRemoteDescription(
-            new RTCSessionDescription(answer)
-        );
-
-        console.log(
-            "✅ Voice remote description set."
-        );
-
-    }
-
-});
 // =====================================
 // VOICE CHAT - LISTEN FOR OFFER
 // =====================================
