@@ -4613,12 +4613,14 @@ function stopVoiceCall() {
         remoteAudio.srcObject = null;
     }
 
-    remoteAudioStream = null;
-    voiceMicEnabled = false;
+remoteAudioStream = null;
+voiceMicEnabled = false;
 
-    // Update UI
-    if (voiceChatStatus) {
+// Reset WebRTC signaling reference
+voiceSignalingRef = null;
 
+// Update UI
+if (voiceChatStatus) {
         voiceChatStatus.textContent =
             "🔇 Voice Chat Off";
     }
