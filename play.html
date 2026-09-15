@@ -219,7 +219,7 @@ MESSAGE
 <div id="message">
 Your Turn
 </div>
-  <!-- ===========================
+<!-- ===========================
      VOICE CHAT
 =========================== -->
 
@@ -229,15 +229,37 @@ Your Turn
         🎤 VOICE CHAT
     </button>
 
-<div id="voiceChatStatus">
-    Voice chat off
-</div>
+    <div id="voiceChatStatus">
+        Voice chat off
+    </div>
 
-<audio
-    id="remoteAudio"
-    autoplay
-    playsinline>
-</audio>
+    <!-- ===========================
+         VOICE CHAT REQUEST
+    =========================== -->
+
+    <div
+        id="voiceRequest"
+        style="display:none;">
+
+        <p id="voiceRequestText">
+            🎤 Your opponent wants to start a voice chat.
+        </p>
+
+        <button id="acceptVoiceButton">
+            ✅ ACCEPT
+        </button>
+
+        <button id="declineVoiceButton">
+            ❌ DECLINE
+        </button>
+
+    </div>
+
+    <audio
+        id="remoteAudio"
+        autoplay
+        playsinline>
+    </audio>
 
 </div>
 <!-- ===========================
