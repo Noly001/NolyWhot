@@ -2009,7 +2009,9 @@ function startGame(){
 // =====================================
 
 function startOnlineGame(){
-setupVoiceSignaling();
+    setupVoiceSignaling();
+    listenForVoiceRequest();
+
     console.log("🌐 Creating shared online game...");
 
     clearInterval(timer);
@@ -4207,14 +4209,29 @@ const voiceChatStatus =
 let localAudioStream = null;
 let voiceMicEnabled = false;
 let voiceSignalingRef = null;
+// =====================================
+// VOICE CHAT REQUEST NOTIFICATION
+// =====================================
+
+const voiceRequest =
+    document.getElementById("voiceRequest");
+
+const voiceRequestText =
+    document.getElementById("voiceRequestText");
+
+const acceptVoiceButton =
+    document.getElementById("acceptVoiceButton");
+
+const declineVoiceButton =
+    document.getElementById("declineVoiceButton");
+
+let voiceRequestRef = null;
+let currentVoiceRequestId = null;
+let voiceRequestAccepted = false;
 function setupVoiceSignaling() {
 
     if (!currentRoomCode) {
-
-        console.log(
-            "⚠️ No room code available for voice chat."
-        );
-
+        console.log("⚠️ No room code available for voice chat.");
         return null;
     }
 
@@ -4226,12 +4243,73 @@ function setupVoiceSignaling() {
             "/voiceChat"
         );
 
+    // Voice request path
+    voiceRequestRef =
+        ref(
+            database,
+            "rooms/" +
+            currentRoomCode +
+            "/voiceChat/request"
+        );
+
     console.log(
         "🎧 Voice signaling ready:",
         currentRoomCode
     );
 
+    console.log(
+        "🔔 Voice request path ready."
+    );
+
     return voiceSignalingRef;
+}
+// =====================================
+// LISTEN FOR VOICE CHAT REQUEST
+// =====================================
+
+function listenForVoiceRequest() {
+
+    if (!voiceRequestRef) {
+        console.log("⚠️ Voice request path not ready.");
+        return;
+    }
+
+    onValue(voiceRequestRef, function(snapshot) {
+
+        const request = snapshot.val();
+
+        if (!request) {
+            return;
+        }
+
+        // Ignore our own request
+        if (
+            request.requester === onlinePlayerNumber
+        ) {
+            return;
+        }
+
+        // Only show pending requests
+        if (
+            request.status === "pending"
+        ) {
+
+            currentVoiceRequestId =
+                request.requestId;
+
+            voiceRequestText.textContent =
+                "🎤 Your opponent wants to start a voice chat.";
+
+            voiceRequest.style.display =
+                "block";
+
+            console.log(
+                "🔔 Incoming voice chat request:",
+                request
+            );
+        }
+
+    });
 }
 async function createVoicePeerConnection() {
 
@@ -4646,7 +4724,24 @@ if (voiceChatButton) {
         }
 
         try {
+        // Send voice chat request to opponent
+        if (onlineMode && currentRoomCode) {
 
+            const requestId = push(voiceRequestRef).key;
+
+            await set(voiceRequestRef, {
+                requestId: requestId,
+                requester: onlinePlayerNumber,
+                status: "pending"
+            });
+
+            console.log("🔔 Voice chat request sent.");
+
+            voiceChatStatus.textContent =
+                "🔔 Voice request sent";
+
+            return;
+        }
             // Request microphone access
             localAudioStream =
                 await navigator.mediaDevices.getUserMedia({
