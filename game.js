@@ -1135,7 +1135,7 @@ function startQuickMatchGame(){
     onlineMode = true;
 
     onlineGameStarted = true;
-
+    initializeVoiceForCurrentRoom();
     // ==========================
     // HIDE LOBBY
     // ==========================
@@ -1508,12 +1508,11 @@ opponentNameText.textContent = "PLAYER 1";
 
         currentRoomCode = roomCode;
 
-        onlineGameRef =
-            ref(
-                database,
-                "rooms/" + roomCode + "/game"
-            );
-   listenForRematch();
+onlineGameRef = ref(database, "rooms/" + roomCode + "/game");
+
+initializeVoiceForCurrentRoom();
+
+listenForRematch();
         // ==========================
         // IMPORTANT:
         // REGISTER PLAYER 2
@@ -4182,12 +4181,36 @@ if (modeSelection) {
     }
 
 }
-// =====================================
-// VOICE CHAT - WEBRTC
-// =====================================
+// ==========================================
+// NOLYWHOT VOICE CHAT - WEBRTC
+// Two-way voice requests, accept/decline,
+// microphone permissions and restart support.
+// ==========================================
 
 let voicePeerConnection = null;
 let remoteAudioStream = null;
+let localAudioStream = null;
+let voiceMicEnabled = false;
+
+let voiceSignalingRef = null;
+let voiceRequestRef = null;
+let currentVoiceRequestId = null;
+let voiceRequestAccepted = false;
+
+let voiceRoomInitialized = null;
+let voiceUnsubscribers = [];
+let voiceCandidateUnsubscribe = null;
+
+let voiceLastRequestStatus = null;
+let voiceOfferStartedFor = null;
+let voiceAnswerStartedFor = null;
+let voiceAnswerAppliedFor = null;
+let voiceOfferAppliedFor = null;
+
+let voiceSeenCandidates = new Set();
+let voicePendingCandidates = [];
+let voiceEndingLocally = false;
+let voiceRequestBeingSent = false;
 
 const voiceConfiguration = {
     iceServers: [
@@ -4196,22 +4219,12 @@ const voiceConfiguration = {
         }
     ]
 };
-// =====================================
-// VOICE CHAT - MICROPHONE
-// =====================================
 
 const voiceChatButton =
     document.getElementById("voiceChatButton");
 
 const voiceChatStatus =
     document.getElementById("voiceChatStatus");
-
-let localAudioStream = null;
-let voiceMicEnabled = false;
-let voiceSignalingRef = null;
-// =====================================
-// VOICE CHAT REQUEST NOTIFICATION
-// =====================================
 
 const voiceRequest =
     document.getElementById("voiceRequest");
@@ -4225,575 +4238,1294 @@ const acceptVoiceButton =
 const declineVoiceButton =
     document.getElementById("declineVoiceButton");
 
-let voiceRequestRef = null;
-let currentVoiceRequestId = null;
-let voiceRequestAccepted = false;
-function setupVoiceSignaling() {
+const remoteAudio =
+    document.getElementById("remoteAudio");
 
-    if (!currentRoomCode) {
-        console.log("⚠️ No room code available for voice chat.");
+
+// ------------------------------------------
+// DISPLAY STATUS
+// ------------------------------------------
+
+function setVoiceStatus(message) {
+    if (voiceChatStatus) {
+        voiceChatStatus.textContent = message;
+    }
+}
+
+
+// ------------------------------------------
+// HIDE INCOMING REQUEST POPUP
+// ------------------------------------------
+
+function hideVoiceRequestPopup() {
+    if (voiceRequest) {
+        voiceRequest.style.display = "none";
+    }
+}
+
+
+// ------------------------------------------
+// SET UP FIREBASE VOICE REFERENCES
+// ------------------------------------------
+
+function setupVoiceSignaling() {
+    if (!database || !currentRoomCode) {
         return null;
     }
 
-    voiceSignalingRef =
-        ref(
-            database,
-            "rooms/" +
-            currentRoomCode +
-            "/voiceChat"
-        );
-
-    // Voice request path
-    voiceRequestRef =
-        ref(
-            database,
-            "rooms/" +
-            currentRoomCode +
-            "/voiceChat/request"
-        );
-
-    console.log(
-        "🎧 Voice signaling ready:",
-        currentRoomCode
+    voiceSignalingRef = ref(
+        database,
+        "rooms/" + currentRoomCode + "/voiceChat"
     );
 
-    console.log(
-        "🔔 Voice request path ready."
+    voiceRequestRef = ref(
+        database,
+        "rooms/" + currentRoomCode + "/voiceChat/request"
     );
 
     return voiceSignalingRef;
 }
-// =====================================
-// LISTEN FOR VOICE CHAT REQUEST
-// =====================================
 
-function listenForVoiceRequest() {
 
-    if (!voiceRequestRef) {
-        console.log("⚠️ Voice request path not ready.");
-        return;
-    }
+// ------------------------------------------
+// STOP LISTENING TO OLD ROOM CONNECTIONS
+// ------------------------------------------
 
-    onValue(voiceRequestRef, function(snapshot) {
-
-        const request = snapshot.val();
-
-        if (!request) {
-            return;
+function clearVoiceListeners() {
+    voiceUnsubscribers.forEach(function (unsubscribe) {
+        try {
+            unsubscribe();
+        } catch (error) {
+            console.warn(
+                "Voice listener cleanup:",
+                error
+            );
         }
+    });
 
-        // Ignore our own request
-        if (
-            request.requester === onlinePlayerNumber
-        ) {
-            return;
-        }
+    voiceUnsubscribers = [];
 
-        // Only show pending requests
-        if (
-            request.status === "pending"
-        ) {
-
-            currentVoiceRequestId =
-                request.requestId;
-
-            voiceRequestText.textContent =
-                "🎤 Your opponent wants to start a voice chat.";
-
-            voiceRequest.style.display =
-                "block";
-
-            console.log(
-                "🔔 Incoming voice chat request:",
-                request
+    if (voiceCandidateUnsubscribe) {
+        try {
+            voiceCandidateUnsubscribe();
+        } catch (error) {
+            console.warn(
+                "Candidate listener cleanup:",
+                error
             );
         }
 
-    });
+        voiceCandidateUnsubscribe = null;
+    }
 }
-async function createVoicePeerConnection() {
 
+
+// ------------------------------------------
+// CLEAN UP THE CURRENT VOICE CONNECTION
+// ------------------------------------------
+
+function cleanupVoiceConnection() {
+    voiceMicEnabled = false;
+
+    if (voicePeerConnection) {
+        try {
+            voicePeerConnection.onicecandidate = null;
+            voicePeerConnection.ontrack = null;
+            voicePeerConnection.onconnectionstatechange = null;
+            voicePeerConnection.close();
+        } catch (error) {
+            console.warn(
+                "Voice connection cleanup:",
+                error
+            );
+        }
+
+        voicePeerConnection = null;
+    }
+
+    if (localAudioStream) {
+        localAudioStream.getTracks().forEach(function (track) {
+            track.stop();
+        });
+
+        localAudioStream = null;
+    }
+
+    remoteAudioStream = null;
+
+    if (remoteAudio) {
+        remoteAudio.pause();
+        remoteAudio.srcObject = null;
+    }
+
+    voiceOfferStartedFor = null;
+    voiceAnswerStartedFor = null;
+    voiceAnswerAppliedFor = null;
+    voiceOfferAppliedFor = null;
+
+    voiceSeenCandidates = new Set();
+    voicePendingCandidates = [];
+}
+
+
+// ------------------------------------------
+// REQUEST MICROPHONE ACCESS
+// ------------------------------------------
+
+async function getVoiceMicrophone() {
+    if (localAudioStream) {
+        return localAudioStream;
+    }
+
+    if (
+        !navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia
+    ) {
+        throw new Error(
+            "Microphone access is unavailable. Open the game using HTTPS."
+        );
+    }
+
+    localAudioStream =
+        await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            },
+            video: false
+        });
+
+    return localAudioStream;
+}
+
+
+// ------------------------------------------
+// PROCESS BUFFERED ICE CANDIDATES
+// ------------------------------------------
+
+async function flushVoiceCandidates() {
+    if (
+        !voicePeerConnection ||
+        !voicePeerConnection.remoteDescription
+    ) {
+        return;
+    }
+
+    const pending = voicePendingCandidates.slice();
+
+    voicePendingCandidates = [];
+
+    for (const candidate of pending) {
+        if (!voicePeerConnection) {
+            return;
+        }
+
+        try {
+            await voicePeerConnection.addIceCandidate(
+                new RTCIceCandidate(candidate)
+            );
+        } catch (error) {
+            console.warn(
+                "Could not add buffered voice candidate:",
+                error
+            );
+        }
+    }
+}
+
+
+// ------------------------------------------
+// CREATE WEBRTC CONNECTION
+// ------------------------------------------
+
+function createVoicePeerConnection(requestId) {
     if (voicePeerConnection) {
         return voicePeerConnection;
     }
 
-    voicePeerConnection =
-        new RTCPeerConnection(voiceConfiguration);
+    const pc = new RTCPeerConnection(
+        voiceConfiguration
+    );
 
-    voicePeerConnection.ontrack = function(event) {
+    voicePeerConnection = pc;
 
-        console.log("🔊 Remote voice received.");
+    if (localAudioStream) {
+        localAudioStream.getTracks().forEach(function (track) {
+            pc.addTrack(track, localAudioStream);
+        });
+    }
 
-        remoteAudioStream =
-            event.streams[0];
+    pc.ontrack = function (event) {
+        if (voicePeerConnection !== pc) {
+            return;
+        }
 
-        const remoteAudio =
-            document.getElementById("remoteAudio");
+        if (event.streams && event.streams[0]) {
+            remoteAudioStream = event.streams[0];
+        } else {
+            if (!remoteAudioStream) {
+                remoteAudioStream = new MediaStream();
+            }
 
-        if (remoteAudio) {
+            event.streams.forEach(function (stream) {
+                stream.getTracks().forEach(function (track) {
+                    remoteAudioStream.addTrack(track);
+                });
+            });
+        }
 
-            remoteAudio.srcObject =
-                remoteAudioStream;
+        if (remoteAudio && remoteAudioStream) {
+            remoteAudio.srcObject = remoteAudioStream;
 
-            remoteAudio.play().catch(function(error) {
-
-                console.log(
-                    "🔊 Remote audio waiting for user interaction.",
+            remoteAudio.play().catch(function (error) {
+                console.warn(
+                    "Tap the page to enable remote audio:",
                     error
                 );
 
+                setVoiceStatus(
+                    "Voice connected. Tap the game if you cannot hear audio."
+                );
             });
-
         }
 
+        voiceMicEnabled = true;
+
+        if (voiceChatButton) {
+            voiceChatButton.textContent = "🔴 STOP VOICE CHAT";
+        }
+
+        setVoiceStatus("Voice chat connected 🎤");
     };
 
-voicePeerConnection.onconnectionstatechange =
-    function() {
-
-        console.log(
-            "🎧 Voice connection:",
-            voicePeerConnection.connectionState
-        );
-
-    };
-
-// =====================================
-// VOICE CHAT - ICE CANDIDATES
-// =====================================
-
-voicePeerConnection.onicecandidate =
-    function(event) {
+    pc.onicecandidate = async function (event) {
+        if (!event.candidate) {
+            return;
+        }
 
         if (
-            !event.candidate ||
-            !voiceSignalingRef ||
-            !currentUser
+            !currentRoomCode ||
+            currentVoiceRequestId !== requestId
         ) {
             return;
         }
 
-        const candidateType =
-            onlinePlayerNumber === 1
-                ? "offerCandidates"
-                : "answerCandidates";
-
-        const candidateRef =
-            push(
-                ref(
-                    database,
-                    "rooms/" +
-                    currentRoomCode +
-                    "/voiceChat/" +
-                    candidateType
-                )
-            );
-
-        set(
-            candidateRef,
-            event.candidate.toJSON()
-        );
-
-        console.log(
-            "🧊 ICE candidate sent:",
-            candidateType
-        );
-
-    };
-
-return voicePeerConnection;
-}
-// =====================================
-// VOICE CHAT - START CALL
-// =====================================
-
-async function startVoiceCall() {
-
-    if (!currentRoomCode) {
-
-        console.log(
-            "⚠️ Cannot start voice chat: no room."
-        );
-
-        voiceChatStatus.textContent =
-            "⚠️ Join an online game first";
-
-        return;
-    }
-
-    if (!voiceSignalingRef) {
-
-        setupVoiceSignaling();
-
-    }
-
-    const peerConnection =
-        await createVoicePeerConnection();
-
-    console.log(
-        "🎧 Starting voice call as Player",
-        onlinePlayerNumber
-    );
-
-    // =================================
-    // PLAYER 1 CREATES OFFER
-    // =================================
-
-    if (onlinePlayerNumber === 1) {
-
-        const offer =
-            await peerConnection.createOffer();
-
-        await peerConnection.setLocalDescription(
-            offer
-        );
-
-        await set(
-            ref(
-                database,
-                "rooms/" +
-                currentRoomCode +
-                "/voiceChat/offer"
-            ),
-            {
-                type: offer.type,
-                sdp: offer.sdp
-            }
-        );
-
-        console.log(
-            "📡 Voice offer sent."
-        );
-
-        // =================================
-        // PLAYER 1 LISTENS FOR ANSWER
-        // =================================
-
-        const answerRef =
-            ref(
-                database,
-                "rooms/" +
-                currentRoomCode +
-                "/voiceChat/answer"
-            );
-
-        onValue(answerRef, async function(snapshot) {
-
-            const answer = snapshot.val();
-
-            if (!answer) {
-                return;
-            }
-
-            console.log(
-                "📡 Voice answer received."
-            );
-
-            if (
-                !peerConnection.currentRemoteDescription
-            ) {
-
-                await peerConnection.setRemoteDescription(
-                    new RTCSessionDescription(answer)
+        const requestSnapshot = await new Promise(
+            function (resolve) {
+                onValue(
+                    ref(
+                        database,
+                        "rooms/" + currentRoomCode +
+                        "/voiceChat/request"
+                    ),
+                    function (snapshot) {
+                        resolve(snapshot.val());
+                    },
+                    { onlyOnce: true }
                 );
-
-                console.log(
-                    "✅ Voice remote description set."
-                );
-
             }
-
-        });
-
-    }
-
-}
-
-// =====================================
-// VOICE CHAT - LISTEN FOR OFFER
-// =====================================
-
-function listenForVoiceOffer() {
-
-    if (!voiceSignalingRef) {
-        setupVoiceSignaling();
-    }
-
-    if (!voiceSignalingRef) {
-        return;
-    }
-
-    if (onlinePlayerNumber !== 2) {
-        return;
-    }
-
-    const offerRef =
-        ref(
-            database,
-            "rooms/" +
-            currentRoomCode +
-            "/voiceChat/offer"
         );
 
-    onValue(offerRef, async function(snapshot) {
-
-        const offer = snapshot.val();
-
-        if (!offer) {
+        if (
+            !requestSnapshot ||
+            requestSnapshot.requestId !== requestId ||
+            requestSnapshot.status !== "accepted"
+        ) {
             return;
         }
 
-        console.log(
-            "📡 Voice offer received."
-        );
+        const isRequester =
+            Number(requestSnapshot.requester) ===
+            Number(onlinePlayerNumber);
 
-        const peerConnection =
-            await createVoicePeerConnection();
+        const branch = isRequester
+            ? "offerCandidates"
+            : "answerCandidates";
 
-        await peerConnection.setRemoteDescription(
-            new RTCSessionDescription(offer)
-        );
+        try {
+            await push(
+                ref(
+                    database,
+                    "rooms/" + currentRoomCode +
+                    "/voiceChat/" + branch
+                ),
+                {
+                    requestId: requestId,
+                    candidate: event.candidate.toJSON()
+                }
+            );
+        } catch (error) {
+            console.error(
+                "Could not send voice candidate:",
+                error
+            );
+        }
+    };
 
-        const answer =
-            await peerConnection.createAnswer();
+    pc.onconnectionstatechange = function () {
+        if (voicePeerConnection !== pc) {
+            return;
+        }
 
-        await peerConnection.setLocalDescription(
-            answer
-        );
+        if (pc.connectionState === "connected") {
+            voiceMicEnabled = true;
 
-        await set(
-            ref(
-                database,
-                "rooms/" +
-                currentRoomCode +
-                "/voiceChat/answer"
-            ),
-            {
-                type: answer.type,
-                sdp: answer.sdp
+            if (voiceChatButton) {
+                voiceChatButton.textContent =
+                    "🔴 STOP VOICE CHAT";
             }
-        );
 
-        console.log(
-            "📡 Voice answer sent."
-        );
+            setVoiceStatus("Voice chat connected 🎤");
+        }
 
-    });
+        if (pc.connectionState === "failed") {
+            voiceMicEnabled = false;
+
+            setVoiceStatus(
+                "Voice connection failed. Check both internet connections."
+            );
+        }
+
+        if (pc.connectionState === "disconnected") {
+            setVoiceStatus(
+                "Voice connection interrupted. Reconnecting..."
+            );
+        }
+    };
+
+    return pc;
 }
-// =====================================
-// VOICE CHAT - LISTEN FOR ICE CANDIDATES
-// =====================================
 
-function listenForVoiceCandidates() {
 
-    if (!currentRoomCode) {
-        return;
+// ------------------------------------------
+// LISTEN FOR REMOTE ICE CANDIDATES
+// ------------------------------------------
+
+function listenForVoiceCandidates(requestId, isRequester) {
+    if (voiceCandidateUnsubscribe) {
+        voiceCandidateUnsubscribe();
+        voiceCandidateUnsubscribe = null;
     }
 
-    const candidateType =
-        onlinePlayerNumber === 1
-            ? "answerCandidates"
-            : "offerCandidates";
+    voiceSeenCandidates = new Set();
+    voicePendingCandidates = [];
 
-    const candidatesRef =
-        ref(
-            database,
-            "rooms/" +
-            currentRoomCode +
-            "/voiceChat/" +
-            candidateType
-        );
+    const branch = isRequester
+        ? "answerCandidates"
+        : "offerCandidates";
 
-    onValue(
+    const candidatesRef = ref(
+        database,
+        "rooms/" + currentRoomCode +
+        "/voiceChat/" + branch
+    );
+
+    voiceCandidateUnsubscribe = onValue(
         candidatesRef,
-        async function(snapshot) {
-
-            if (!voicePeerConnection) {
-                return;
-            }
-
-            const candidates =
-                snapshot.val();
+        function (snapshot) {
+            const candidates = snapshot.val();
 
             if (!candidates) {
                 return;
             }
 
-            for (
-                const key in candidates
-            ) {
-
-                const candidate =
-                    candidates[key];
-
-                try {
-
-                    await voicePeerConnection
-                        .addIceCandidate(
-                            new RTCIceCandidate(
-                                candidate
-                            )
-                        );
-
-                    console.log(
-                        "🧊 ICE candidate received."
-                    );
-
-                } catch (error) {
-
-                    console.error(
-                        "❌ Failed to add ICE candidate:",
-                        error
-                    );
-
+            Object.keys(candidates).forEach(function (key) {
+                if (voiceSeenCandidates.has(key)) {
+                    return;
                 }
 
+                const item = candidates[key];
+
+                if (
+                    !item ||
+                    item.requestId !== requestId ||
+                    !item.candidate
+                ) {
+                    return;
+                }
+
+                voiceSeenCandidates.add(key);
+
+                if (
+                    !voicePeerConnection ||
+                    !voicePeerConnection.remoteDescription
+                ) {
+                    voicePendingCandidates.push(
+                        item.candidate
+                    );
+
+                    return;
+                }
+
+                voicePeerConnection.addIceCandidate(
+                    new RTCIceCandidate(item.candidate)
+                ).catch(function (error) {
+                    console.warn(
+                        "Could not add voice candidate:",
+                        error
+                    );
+                });
+            });
+        }
+    );
+}
+
+
+// ------------------------------------------
+// REQUESTER CREATES THE OFFER
+// ------------------------------------------
+
+async function startVoiceOffer(requestId) {
+    if (
+        !currentRoomCode ||
+        currentVoiceRequestId !== requestId ||
+        voiceOfferStartedFor === requestId
+    ) {
+        return;
+    }
+
+    voiceOfferStartedFor = requestId;
+
+    try {
+        setVoiceStatus(
+            "Request accepted. Activating your microphone..."
+        );
+
+        await getVoiceMicrophone();
+
+        if (
+            currentVoiceRequestId !== requestId ||
+            !currentRoomCode
+        ) {
+            return;
+        }
+
+        const pc = createVoicePeerConnection(requestId);
+
+        listenForVoiceCandidates(requestId, true);
+
+        const offer = await pc.createOffer();
+
+        await pc.setLocalDescription(offer);
+
+        await set(
+            ref(
+                database,
+                "rooms/" + currentRoomCode +
+                "/voiceChat/offer"
+            ),
+            {
+                requestId: requestId,
+                type: offer.type,
+                sdp: offer.sdp
+            }
+        );
+
+        setVoiceStatus(
+            "Calling your opponent..."
+        );
+    } catch (error) {
+        console.error("Voice offer failed:", error);
+
+        setVoiceStatus(
+            error.name === "NotAllowedError"
+                ? "Microphone permission denied on your phone."
+                : "Could not start voice chat. Check microphone permission and internet."
+        );
+
+        await endVoiceChat(true);
+    }
+}
+
+
+// ------------------------------------------
+// ANSWERER RECEIVES OFFER AND SENDS ANSWER
+// ------------------------------------------
+
+async function handleVoiceOffer(offerData, requestId) {
+    if (
+        !offerData ||
+        offerData.requestId !== requestId ||
+        currentVoiceRequestId !== requestId ||
+        voiceOfferAppliedFor === requestId
+    ) {
+        return;
+    }
+
+    if (!voiceRequestAccepted) {
+        return;
+    }
+
+    voiceOfferAppliedFor = requestId;
+
+    try {
+        await getVoiceMicrophone();
+
+        const pc = createVoicePeerConnection(requestId);
+
+        listenForVoiceCandidates(requestId, false);
+
+        await pc.setRemoteDescription(
+            new RTCSessionDescription({
+                type: offerData.type,
+                sdp: offerData.sdp
+            })
+        );
+
+        await flushVoiceCandidates();
+
+        const answer = await pc.createAnswer();
+
+        await pc.setLocalDescription(answer);
+
+        await set(
+            ref(
+                database,
+                "rooms/" + currentRoomCode +
+                "/voiceChat/answer"
+            ),
+            {
+                requestId: requestId,
+                type: answer.type,
+                sdp: answer.sdp
+            }
+        );
+
+        setVoiceStatus(
+            "Connecting to your opponent..."
+        );
+    } catch (error) {
+        console.error("Voice answer failed:", error);
+
+        setVoiceStatus(
+            error.name === "NotAllowedError"
+                ? "Microphone permission denied on your phone."
+                : "Could not answer the voice call. Please try again."
+        );
+
+        await endVoiceChat(true);
+    }
+}
+
+
+// ------------------------------------------
+// REQUESTER RECEIVES ANSWER
+// ------------------------------------------
+
+async function handleVoiceAnswer(answerData, requestId) {
+    if (
+        !answerData ||
+        answerData.requestId !== requestId ||
+        currentVoiceRequestId !== requestId ||
+        voiceAnswerAppliedFor === requestId ||
+        !voicePeerConnection
+    ) {
+        return;
+    }
+
+    voiceAnswerAppliedFor = requestId;
+
+    try {
+        await voicePeerConnection.setRemoteDescription(
+            new RTCSessionDescription({
+                type: answerData.type,
+                sdp: answerData.sdp
+            })
+        );
+
+        await flushVoiceCandidates();
+
+        setVoiceStatus(
+            "Connecting to your opponent..."
+        );
+    } catch (error) {
+        console.error("Could not apply voice answer:", error);
+
+        setVoiceStatus(
+            "Could not connect the voice call. Please try again."
+        );
+    }
+}
+
+
+// ------------------------------------------
+// HANDLE VOICE REQUEST UPDATES
+// ------------------------------------------
+
+function listenForVoiceRequest() {
+    if (!voiceRequestRef) {
+        setupVoiceSignaling();
+    }
+
+    if (!voiceRequestRef) {
+        return;
+    }
+
+    // Initialization below is idempotent.
+    initializeVoiceForCurrentRoom();
+}
+
+
+// ------------------------------------------
+// INITIALIZE VOICE CHAT FOR BOTH PLAYERS
+// ------------------------------------------
+
+function initializeVoiceForCurrentRoom() {
+    if (
+        !database ||
+        !currentRoomCode ||
+        !onlinePlayerNumber ||
+        !onlineMode
+    ) {
+        return;
+    }
+
+    const roomKey = String(currentRoomCode);
+
+    if (voiceRoomInitialized === roomKey) {
+        return;
+    }
+
+    clearVoiceListeners();
+    cleanupVoiceConnection();
+
+    voiceRoomInitialized = roomKey;
+
+    currentVoiceRequestId = null;
+    voiceRequestAccepted = false;
+    voiceLastRequestStatus = null;
+
+    setupVoiceSignaling();
+
+    hideVoiceRequestPopup();
+
+    const requestUnsubscribe = onValue(
+        voiceRequestRef,
+        async function (snapshot) {
+            const requestData = snapshot.val();
+
+            if (!requestData || !requestData.requestId) {
+                return;
             }
 
+            const isMyRequest =
+                Number(requestData.requester) ===
+                Number(onlinePlayerNumber);
+
+            if (
+                currentVoiceRequestId !== requestData.requestId
+            ) {
+                if (voicePeerConnection || localAudioStream) {
+                    cleanupVoiceConnection();
+                }
+
+                currentVoiceRequestId =
+                    requestData.requestId;
+
+                voiceRequestAccepted = false;
+                voiceOfferStartedFor = null;
+                voiceAnswerStartedFor = null;
+                voiceAnswerAppliedFor = null;
+                voiceOfferAppliedFor = null;
+
+                voiceLastRequestStatus = null;
+            }
+
+            if (
+                requestData.status === "pending"
+            ) {
+                voiceLastRequestStatus = "pending";
+
+                if (isMyRequest) {
+                    hideVoiceRequestPopup();
+
+                    setVoiceStatus(
+                        "Voice request sent. Waiting for your opponent..."
+                    );
+                } else {
+                    if (voiceRequestText) {
+                        voiceRequestText.textContent =
+                            "🎤 Your opponent wants to start a voice chat.";
+                    }
+
+                    if (voiceRequest) {
+                        voiceRequest.style.display = "block";
+                    }
+
+                    setVoiceStatus(
+                        "Your opponent is requesting voice chat."
+                    );
+                }
+
+                return;
+            }
+
+            if (
+                requestData.status === "accepted"
+            ) {
+                voiceLastRequestStatus = "accepted";
+
+                hideVoiceRequestPopup();
+
+                voiceRequestAccepted = true;
+
+                if (isMyRequest) {
+                    if (voiceOfferStartedFor !== requestData.requestId) {
+                        await startVoiceOffer(
+                            requestData.requestId
+                        );
+                    }
+                } else {
+                    setVoiceStatus(
+                        "You accepted. Connecting to your opponent..."
+                    );
+                }
+
+                return;
+            }
+
+            if (
+                requestData.status === "declined"
+            ) {
+                voiceLastRequestStatus = "declined";
+
+                hideVoiceRequestPopup();
+
+                cleanupVoiceConnection();
+
+                if (isMyRequest) {
+                    setVoiceStatus(
+                        "Your opponent declined the voice request."
+                    );
+                } else {
+                    setVoiceStatus(
+                        "Voice request declined."
+                    );
+                }
+
+                return;
+            }
+
+            if (
+                requestData.status === "ended"
+            ) {
+                voiceLastRequestStatus = "ended";
+
+                hideVoiceRequestPopup();
+
+                cleanupVoiceConnection();
+
+                voiceRequestAccepted = false;
+
+                setVoiceStatus("Voice chat ended.");
+
+                if (voiceChatButton) {
+                    voiceChatButton.textContent =
+                        "🎤 VOICE CHAT";
+                }
+            }
         }
     );
 
-}
-  // =====================================
-// VOICE CHAT - END CALL
-// =====================================
+    voiceUnsubscribers.push(requestUnsubscribe);
 
-function stopVoiceCall() {
+    const offerUnsubscribe = onValue(
+        ref(
+            database,
+            "rooms/" + currentRoomCode +
+            "/voiceChat/offer"
+        ),
+        async function (snapshot) {
+            const offerData = snapshot.val();
 
-    console.log("🔇 Ending voice chat...");
+            if (
+                !offerData ||
+                !currentVoiceRequestId ||
+                offerData.requestId !== currentVoiceRequestId
+            ) {
+                return;
+            }
 
-    // Stop microphone
-    if (localAudioStream) {
-
-        localAudioStream
-            .getTracks()
-            .forEach(function(track) {
-                track.stop();
-            });
-
-        localAudioStream = null;
-    }
-
-    // Close WebRTC connection
-    if (voicePeerConnection) {
-
-        voicePeerConnection.close();
-
-        voicePeerConnection = null;
-    }
-
-    // Remove remote audio
-    const remoteAudio =
-        document.getElementById("remoteAudio");
-
-    if (remoteAudio) {
-
-        remoteAudio.srcObject = null;
-    }
-
-remoteAudioStream = null;
-voiceMicEnabled = false;
-
-// Reset WebRTC signaling reference
-voiceSignalingRef = null;
-
-// Update UI
-if (voiceChatStatus) {
-        voiceChatStatus.textContent =
-            "🔇 Voice Chat Off";
-    }
-
-    if (voiceChatButton) {
-
-        voiceChatButton.textContent =
-            "🎤 VOICE CHAT";
-    }
-
-    console.log("✅ Voice chat ended.");
-}
-if (voiceChatButton) {
-
-    voiceChatButton.addEventListener("click", async function() {
-
-        // If voice chat is already ON, turn it OFF
-        if (voiceMicEnabled) {
-
-            stopVoiceCall();
-
-            return;
-        }
-
-        try {
-        // Send voice chat request to opponent
-        if (onlineMode && currentRoomCode) {
-
-            const requestId = push(voiceRequestRef).key;
-
-            await set(voiceRequestRef, {
-                requestId: requestId,
-                requester: onlinePlayerNumber,
-                status: "pending"
-            });
-
-            console.log("🔔 Voice chat request sent.");
-
-            voiceChatStatus.textContent =
-                "🔔 Voice request sent";
-
-            return;
-        }
-            // Request microphone access
-            localAudioStream =
-                await navigator.mediaDevices.getUserMedia({
-                    audio: true
-                });
-const peerConnection =
-    await createVoicePeerConnection();
-
-localAudioStream
-    .getTracks()
-    .forEach(function(track) {
-
-        peerConnection.addTrack(
-            track,
-            localAudioStream
-        );
-
-    });
-
-voiceMicEnabled = true;
-
-console.log(
-    "🎤 Microphone added to WebRTC."
-);
-          // Start WebRTC voice signaling
-await startVoiceCall();
-
-if (onlinePlayerNumber === 2) {
-    listenForVoiceOffer();
-}
-
-listenForVoiceCandidates();
-            console.log("🎤 Microphone permission granted.");
-
-            voiceChatStatus.textContent =
-                "🎤 Microphone on";
-
-            voiceChatButton.textContent =
-                "🔇 VOICE CHAT ON";
-
-        } catch (error) {
-
-            console.error(
-                "❌ Microphone access failed:",
-                error
+            const requestSnapshot = await new Promise(
+                function (resolve) {
+                    onValue(
+                        voiceRequestRef,
+                        function (requestSnap) {
+                            resolve(requestSnap.val());
+                        },
+                        { onlyOnce: true }
+                    );
+                }
             );
 
-            voiceChatStatus.textContent =
-                "❌ Microphone access denied";
+            if (
+                !requestSnapshot ||
+                requestSnapshot.status !== "accepted" ||
+                Number(requestSnapshot.requester) ===
+                Number(onlinePlayerNumber)
+            ) {
+                return;
+            }
 
+            await handleVoiceOffer(
+                offerData,
+                offerData.requestId
+            );
+        }
+    );
+
+    voiceUnsubscribers.push(offerUnsubscribe);
+
+    const answerUnsubscribe = onValue(
+        ref(
+            database,
+            "rooms/" + currentRoomCode +
+            "/voiceChat/answer"
+        ),
+        async function (snapshot) {
+            const answerData = snapshot.val();
+
+            if (
+                !answerData ||
+                !currentVoiceRequestId ||
+                answerData.requestId !== currentVoiceRequestId
+            ) {
+                return;
+            }
+
+            const requestSnapshot = await new Promise(
+                function (resolve) {
+                    onValue(
+                        voiceRequestRef,
+                        function (requestSnap) {
+                            resolve(requestSnap.val());
+                        },
+                        { onlyOnce: true }
+                    );
+                }
+            );
+
+            if (
+                !requestSnapshot ||
+                requestSnapshot.status !== "accepted" ||
+                Number(requestSnapshot.requester) !==
+                Number(onlinePlayerNumber)
+            ) {
+                return;
+            }
+
+            await handleVoiceAnswer(
+                answerData,
+                answerData.requestId
+            );
+        }
+    );
+
+    voiceUnsubscribers.push(answerUnsubscribe);
+}
+
+
+// ------------------------------------------
+// SEND A VOICE REQUEST
+// ------------------------------------------
+
+async function sendVoiceRequest() {
+    if (
+        !currentRoomCode ||
+        !onlinePlayerNumber ||
+        !onlineMode
+    ) {
+        setVoiceStatus(
+            "Voice chat is available during an online game."
+        );
+
+        return;
+    }
+
+    if (voiceRequestBeingSent) {
+        return;
+    }
+
+    voiceRequestBeingSent = true;
+
+    try {
+        initializeVoiceForCurrentRoom();
+
+        const rootPath =
+            "rooms/" + currentRoomCode + "/voiceChat";
+
+        // Remove old call details so the next call
+        // cannot reuse a previous offer or answer.
+        await set(
+            ref(database, rootPath + "/offer"),
+            null
+        );
+
+        await set(
+            ref(database, rootPath + "/answer"),
+            null
+        );
+
+        await set(
+            ref(database, rootPath + "/offerCandidates"),
+            null
+        );
+
+        await set(
+            ref(database, rootPath + "/answerCandidates"),
+            null
+        );
+
+        const newRequestId =
+            String(Date.now()) + "_" +
+            String(onlinePlayerNumber) + "_" +
+            Math.random().toString(36).slice(2, 10);
+
+        currentVoiceRequestId = newRequestId;
+        voiceRequestAccepted = false;
+
+        voiceOfferStartedFor = null;
+        voiceAnswerStartedFor = null;
+        voiceAnswerAppliedFor = null;
+        voiceOfferAppliedFor = null;
+
+        voiceSeenCandidates = new Set();
+        voicePendingCandidates = [];
+
+        await set(
+            ref(database, rootPath + "/request"),
+            {
+                requestId: newRequestId,
+                requester: Number(onlinePlayerNumber),
+                status: "pending",
+                createdAt: Date.now()
+            }
+        );
+
+        setVoiceStatus(
+            "Voice request sent. Waiting for your opponent..."
+        );
+    } catch (error) {
+        console.error(
+            "Could not send voice request:",
+            error
+        );
+
+        setVoiceStatus(
+            "Could not send voice request. Check your internet connection."
+        );
+    } finally {
+        voiceRequestBeingSent = false;
+    }
+}
+
+
+// ------------------------------------------
+// ACCEPT AN INCOMING REQUEST
+// ------------------------------------------
+
+async function acceptVoiceRequest() {
+    if (
+        !currentRoomCode ||
+        !currentVoiceRequestId
+    ) {
+        return;
+    }
+
+    try {
+        setVoiceStatus(
+            "Request accepted. Allow microphone access when asked..."
+        );
+
+        // The accepting player must grant microphone
+        // permission before the request becomes accepted.
+        await getVoiceMicrophone();
+
+        const requestSnapshot = await new Promise(
+            function (resolve) {
+                onValue(
+                    voiceRequestRef,
+                    function (snapshot) {
+                        resolve(snapshot.val());
+                    },
+                    { onlyOnce: true }
+                );
+            }
+        );
+
+        if (
+            !requestSnapshot ||
+            requestSnapshot.requestId !== currentVoiceRequestId ||
+            requestSnapshot.status !== "pending" ||
+            Number(requestSnapshot.requester) ===
+            Number(onlinePlayerNumber)
+        ) {
+            setVoiceStatus(
+                "This voice request is no longer available."
+            );
+
+            return;
         }
 
-    });
+        voiceRequestAccepted = true;
 
+        await set(
+            voiceRequestRef,
+            {
+                ...requestSnapshot,
+                status: "accepted",
+                acceptedBy: Number(onlinePlayerNumber),
+                acceptedAt: Date.now()
+            }
+        );
+
+        hideVoiceRequestPopup();
+
+        setVoiceStatus(
+            "Request accepted. Connecting..."
+        );
+    } catch (error) {
+        console.error(
+            "Could not accept voice request:",
+            error
+        );
+
+        hideVoiceRequestPopup();
+
+        cleanupVoiceConnection();
+
+        setVoiceStatus(
+            error.name === "NotAllowedError"
+                ? "Microphone permission denied on your phone. Allow microphone access in your browser settings."
+                : "Could not access the microphone. Please try again."
+        );
+    }
+}
+
+
+// ------------------------------------------
+// DECLINE AN INCOMING REQUEST
+// ------------------------------------------
+
+async function declineVoiceRequest() {
+    if (
+        !currentRoomCode ||
+        !currentVoiceRequestId
+    ) {
+        hideVoiceRequestPopup();
+        return;
+    }
+
+    try {
+        const snapshot = await new Promise(
+            function (resolve) {
+                onValue(
+                    voiceRequestRef,
+                    function (result) {
+                        resolve(result.val());
+                    },
+                    { onlyOnce: true }
+                );
+            }
+        );
+
+        if (
+            snapshot &&
+            snapshot.requestId === currentVoiceRequestId &&
+            snapshot.status === "pending" &&
+            Number(snapshot.requester) !==
+            Number(onlinePlayerNumber)
+        ) {
+            await set(
+                voiceRequestRef,
+                {
+                    ...snapshot,
+                    status: "declined",
+                    declinedBy: Number(onlinePlayerNumber),
+                    declinedAt: Date.now()
+                }
+            );
+        }
+    } catch (error) {
+        console.error(
+            "Could not decline voice request:",
+            error
+        );
+    }
+
+    hideVoiceRequestPopup();
+
+    setVoiceStatus("Voice request declined.");
+}
+
+
+// ------------------------------------------
+// END VOICE CHAT
+// ------------------------------------------
+
+async function endVoiceChat(updateFirebase) {
+    if (voiceEndingLocally) {
+        return;
+    }
+
+    voiceEndingLocally = true;
+
+    const requestId = currentVoiceRequestId;
+    const roomCode = currentRoomCode;
+
+    cleanupVoiceConnection();
+
+    voiceRequestAccepted = false;
+
+    hideVoiceRequestPopup();
+
+    if (voiceChatButton) {
+        voiceChatButton.textContent = "🎤 VOICE CHAT";
+    }
+
+    try {
+        if (
+            updateFirebase &&
+            roomCode &&
+            requestId
+        ) {
+            const requestPath =
+                "rooms/" + roomCode +
+                "/voiceChat/request";
+
+            const snapshot = await new Promise(
+                function (resolve) {
+                    onValue(
+                        ref(database, requestPath),
+                        function (result) {
+                            resolve(result.val());
+                        },
+                        { onlyOnce: true }
+                    );
+                }
+            );
+
+            if (
+                snapshot &&
+                snapshot.requestId === requestId &&
+                (
+                    snapshot.status === "accepted" ||
+                    snapshot.status === "pending"
+                )
+            ) {
+                await set(
+                    ref(database, requestPath),
+                    {
+                        ...snapshot,
+                        status: "ended",
+                        endedBy: Number(onlinePlayerNumber),
+                        endedAt: Date.now()
+                    }
+                );
+            }
+        }
+    } catch (error) {
+        console.warn(
+            "Could not update voice-chat status:",
+            error
+        );
+    }
+
+    setVoiceStatus("Voice chat ended.");
+
+    voiceEndingLocally = false;
+}
+
+
+// ------------------------------------------
+// VOICE CHAT BUTTON
+// ------------------------------------------
+
+if (voiceChatButton) {
+    voiceChatButton.addEventListener(
+        "click",
+        async function () {
+            if (!onlineMode || !currentRoomCode) {
+                setVoiceStatus(
+                    "Start or join an online game to use voice chat."
+                );
+
+                return;
+            }
+
+            if (
+                voiceRequestAccepted ||
+                voiceMicEnabled ||
+                voicePeerConnection
+            ) {
+                await endVoiceChat(true);
+                return;
+            }
+
+            if (currentVoiceRequestId) {
+                const snapshot = await new Promise(
+                    function (resolve) {
+                        onValue(
+                            voiceRequestRef,
+                            function (result) {
+                                resolve(result.val());
+                            },
+                            { onlyOnce: true }
+                        );
+                    }
+                );
+
+                if (
+                    snapshot &&
+                    snapshot.requestId === currentVoiceRequestId &&
+                    snapshot.status === "pending"
+                ) {
+                    if (
+                        Number(snapshot.requester) ===
+                        Number(onlinePlayerNumber)
+                    ) {
+                        await endVoiceChat(true);
+                        return;
+                    }
+
+                    setVoiceStatus(
+                        "Please accept or decline the incoming request first."
+                    );
+
+                    return;
+                }
+            }
+
+            await sendVoiceRequest();
+        }
+    );
+}
+
+
+// ------------------------------------------
+// ACCEPT / DECLINE BUTTONS
+// ------------------------------------------
+
+if (acceptVoiceButton) {
+    acceptVoiceButton.addEventListener(
+        "click",
+        acceptVoiceRequest
+    );
+}
+
+if (declineVoiceButton) {
+    declineVoiceButton.addEventListener(
+        "click",
+        declineVoiceRequest
+    );
+}
+
+
+// ------------------------------------------
+// COMPATIBILITY WITH EXISTING GAME CODE
+// ------------------------------------------
+
+function stopVoiceCall() {
+    endVoiceChat(true);
 }
