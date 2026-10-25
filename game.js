@@ -1986,7 +1986,7 @@ function startGame(){
 
     opponentHand=[];
 
-    for(let i=0;i<6;i++){
+    for(let i=0;i<5;i++){
 
         playerHand.push(drawCard());
 
@@ -2039,10 +2039,10 @@ function startOnlineGame(){
     opponentHand = [];
 
     // ==========================
-    // DEAL 6 CARDS EACH
+    // DEAL 5 CARDS EACH
     // ==========================
 
-    for(let i = 0; i < 6; i++){
+    for(let i = 0; i < 5; i++){
 
         const playerCard = drawCard();
         const opponentCard = drawCard();
