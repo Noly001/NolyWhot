@@ -996,6 +996,8 @@ if(gameOver){
     // SHOW RESULT
     // ==============================
 
+    updateBoard();
+
     gameOverScreen.classList.remove(
         "hidden"
     );
@@ -1007,7 +1009,7 @@ if(gameOver){
 
             else if(playerTurn){
 
-                startTurnTimer();
+                startTimer();
 
             }
 
@@ -3421,7 +3423,11 @@ function checkMarketWinner(){
 
 homeButton.onclick=function(){
 
-    window.location.href="index.html";
+    if(typeof stopVoiceCall === "function"){
+        try { stopVoiceCall(); } catch(e){}
+    }
+    clearInterval(timer);
+    window.location.href="play.html?mode=select";
 
 };
 // =====================================
