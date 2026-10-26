@@ -1743,6 +1743,18 @@ const specialSound = new Audio("assets/sounds/spacial.mp3");
 const winSound = new Audio("assets/sounds/Win.mp3");
 const loseSound = new Audio("assets/sounds/Lose.mp3");
 
+function safePlayAudio(audio) {
+    if (audio && typeof audio.play === "function") {
+        try {
+            audio.currentTime = 0;
+            const promise = audio.play();
+            if (promise !== undefined) {
+                promise.catch(function() {});
+            }
+        } catch (e) {}
+    }
+}
+
 const SHAPES = [
     "circle",
     "triangle",
@@ -3425,6 +3437,9 @@ homeButton.onclick=function(){
 
     if(typeof stopVoiceCall === "function"){
         try { stopVoiceCall(); } catch(e){}
+    }
+    if(typeof cancelQuickMatch === "function" && quickMatchActive){
+        try { cancelQuickMatch(); } catch(e){}
     }
     clearInterval(timer);
     window.location.href="play.html?mode=select";
