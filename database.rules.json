@@ -21,6 +21,23 @@
     "financials": {
       ".read": "auth != null && auth.token.admin === true",
       ".write": "false"
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "wallet": {
+          "cashBalance": {
+            ".write": "false"
+          },
+          "demoBalance": {
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        },
+        "transactions": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "false"
+        }
+      }
     }
   }
 }

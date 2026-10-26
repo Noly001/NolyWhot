@@ -58,8 +58,8 @@ async function verifyAdminRole(user) {
             return true;
         }
 
-        // Also allow designated primary admin email configured for system management
-        if (user.email && (user.email.toLowerCase() === "admin@nolywhot.com" || user.email.toLowerCase().includes("admin"))) {
+        // Explicit exact admin email check
+        if (user.email && user.email.toLowerCase() === "admin@nolywhot.com") {
             return true;
         }
     } catch (err) {
