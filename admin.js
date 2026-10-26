@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
 import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyAI6i5KtbiXbI1nbq3FejALTKCQ1EADvP8",
@@ -19,34 +19,82 @@ const auth = getAuth(firebaseApp);
 
 let isAuthenticated = false;
 
-// -------------------------------------------------------------
-// PASSCODE SECURITY AUTHENTICATION
-// -------------------------------------------------------------
+// Helper function to prevent HTML Injection (XSS)
+function escapeHTML(str) {
+    if (str === null || str === undefined) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+// DOM Elements
 const authOverlay = document.getElementById("authOverlay");
-const adminPasscode = document.getElementById("adminPasscode");
+const adminEmail = document.getElementById("adminEmail");
+const adminPassword = document.getElementById("adminPassword");
 const authLoginBtn = document.getElementById("authLoginBtn");
 const authError = document.getElementById("authError");
 const dashboardContent = document.getElementById("dashboardContent");
 
-const ADMIN_PASSCODE_HASH = "nolyadmin123";
-
-function authenticateAdmin() {
-    const entered = adminPasscode.value.trim();
-    if (entered === ADMIN_PASSCODE_HASH || entered === "admin123" || entered === "NOLY2026") {
+// -------------------------------------------------------------
+// FIREBASE AUTHENTICATION (EMAIL & PASSWORD)
+// Anonymous users are strictly denied administrator access.
+// -------------------------------------------------------------
+onAuthStateChanged(auth, (user) => {
+    if (user && !user.isAnonymous) {
         isAuthenticated = true;
         authOverlay.style.display = "none";
         dashboardContent.style.display = "block";
         initDashboardListeners();
     } else {
+        isAuthenticated = false;
+        authOverlay.style.display = "flex";
+        dashboardContent.style.display = "none";
+    }
+});
+
+async function authenticateAdmin() {
+    authError.style.display = "none";
+    const email = adminEmail ? adminEmail.value.trim() : "";
+    const password = adminPassword ? adminPassword.value.trim() : "";
+
+    if (!email || !password) {
         authError.style.display = "block";
-        authError.textContent = "Invalid Administrator Passcode.";
+        authError.textContent = "Please enter both admin email and password.";
+        return;
+    }
+
+    try {
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+
+        if (user.isAnonymous) {
+            authError.style.display = "block";
+            authError.textContent = "Anonymous users are denied administrator privileges.";
+            return;
+        }
+
+        isAuthenticated = true;
+        authOverlay.style.display = "none";
+        dashboardContent.style.display = "block";
+        initDashboardListeners();
+    } catch (error) {
+        console.error("Admin Login Failure:", error);
+        authError.style.display = "block";
+        authError.textContent = "Authentication failed: " + (error.message || "Invalid credentials.");
     }
 }
 
-authLoginBtn.addEventListener("click", authenticateAdmin);
-adminPasscode.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") authenticateAdmin();
-});
+if (authLoginBtn) {
+    authLoginBtn.addEventListener("click", authenticateAdmin);
+}
+if (adminPassword) {
+    adminPassword.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") authenticateAdmin();
+    });
+}
 
 // -------------------------------------------------------------
 // TAB NAVIGATION
@@ -69,15 +117,15 @@ navBtns.forEach(btn => {
 });
 
 // -------------------------------------------------------------
-// FIREBASE DATABASE LISTENERS FOR LIVE METRICS
+// FIREBASE DATABASE LISTENERS WITH ERROR BOUNDARIES
 // -------------------------------------------------------------
 function initDashboardListeners() {
-    signInAnonymously(auth).catch(err => console.error("Firebase Auth Error:", err));
+    if (!isAuthenticated) return;
 
     const roomsRef = ref(database, "rooms");
     const quickMatchRef = ref(database, "quickMatch");
 
-    // Listen to Rooms
+    // Listen to Rooms with error handling callback
     onValue(roomsRef, (snapshot) => {
         if (!snapshot.exists()) {
             renderEmptyRooms();
@@ -86,9 +134,15 @@ function initDashboardListeners() {
 
         const roomsData = snapshot.val();
         processRoomsData(roomsData);
+    }, (error) => {
+        console.error("Firebase Rooms Read Error:", error);
+        const overviewRoomList = document.getElementById("overviewRoomList");
+        if (overviewRoomList) {
+            overviewRoomList.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #ff6b6b;">Permission Denied or Error Loading Rooms: ${escapeHTML(error.message)}</td></tr>`;
+        }
     });
 
-    // Listen to Quick Match Queue
+    // Listen to Quick Match Queue with error handling callback
     onValue(quickMatchRef, (snapshot) => {
         const metricQueue = document.getElementById("metricQuickMatchQueue");
         if (!snapshot.exists()) {
@@ -99,6 +153,8 @@ function initDashboardListeners() {
         const queueData = snapshot.val();
         const waitingCount = Object.values(queueData).filter(p => p && p.status === "waiting").length;
         if (metricQueue) metricQueue.textContent = String(waitingCount);
+    }, (error) => {
+        console.error("Firebase QuickMatch Read Error:", error);
     });
 }
 
@@ -132,27 +188,31 @@ function processRoomsData(rooms) {
             ? '<span class="status-badge status-completed">Completed</span>'
             : (room.guest ? '<span class="status-badge status-active">In Game</span>' : '<span class="status-badge status-waiting">Waiting</span>');
 
-        // Overview Room Table
+        const safeCode = escapeHTML(code);
+        const safeHost = room.host ? escapeHTML(room.host) : "N/A";
+        const safeGuest = room.guest ? escapeHTML(room.guest) : "Waiting...";
+
+        // Overview Room Table (XSS Safe)
         overviewRowsHTML += `
             <tr>
-                <td><strong>${code}</strong></td>
-                <td>${room.host || "N/A"}</td>
-                <td>${room.guest || "Waiting..."}</td>
+                <td><strong>${safeCode}</strong></td>
+                <td>${safeHost}</td>
+                <td>${safeGuest}</td>
                 <td>${statusBadge}</td>
-                <td>${createdAtStr}</td>
+                <td>${escapeHTML(createdAtStr)}</td>
             </tr>
         `;
 
-        // Match Explorer Table
+        // Match Explorer Table (XSS Safe)
         const deckLeft = room.game && room.game.deck ? room.game.deck.length : "N/A";
         const playerTurn = room.game ? `Player ${room.game.playerTurn || 1}` : "N/A";
 
         matchRowsHTML += `
             <tr>
-                <td><strong>${code}</strong></td>
+                <td><strong>${safeCode}</strong></td>
                 <td>${statusBadge}</td>
-                <td>${playerTurn}</td>
-                <td>${deckLeft} cards</td>
+                <td>${escapeHTML(playerTurn)}</td>
+                <td>${escapeHTML(deckLeft)} cards</td>
                 <td>${isGameOver ? "YES" : "NO"}</td>
             </tr>
         `;
@@ -169,9 +229,9 @@ function processRoomsData(rooms) {
     uniquePlayers.forEach((info, uid) => {
         playerRowsHTML += `
             <tr>
-                <td><code>${uid}</code></td>
-                <td>Room ${info.room}</td>
-                <td>${info.role}</td>
+                <td><code>${escapeHTML(uid)}</code></td>
+                <td>Room ${escapeHTML(info.room)}</td>
+                <td>${escapeHTML(info.role)}</td>
                 <td><span class="status-badge status-active">Active</span></td>
             </tr>
         `;
@@ -182,8 +242,10 @@ function processRoomsData(rooms) {
     }
 
     // Update Metrics
-    document.getElementById("metricActiveRooms").textContent = String(activeRoomsCount);
-    document.getElementById("metricCompletedMatches").textContent = String(completedMatchesCount);
+    const metricRoomsEl = document.getElementById("metricActiveRooms");
+    const metricCompletedEl = document.getElementById("metricCompletedMatches");
+    if (metricRoomsEl) metricRoomsEl.textContent = String(activeRoomsCount);
+    if (metricCompletedEl) metricCompletedEl.textContent = String(completedMatchesCount);
 
     if (overviewRoomList) overviewRoomList.innerHTML = overviewRowsHTML || '<tr><td colspan="5" style="text-align: center;">No active rooms.</td></tr>';
     if (matchList) matchList.innerHTML = matchRowsHTML || '<tr><td colspan="5" style="text-align: center;">No active matches.</td></tr>';
@@ -191,8 +253,10 @@ function processRoomsData(rooms) {
 }
 
 function renderEmptyRooms() {
-    document.getElementById("metricActiveRooms").textContent = "0";
-    document.getElementById("metricCompletedMatches").textContent = "0";
+    const metricRoomsEl = document.getElementById("metricActiveRooms");
+    const metricCompletedEl = document.getElementById("metricCompletedMatches");
+    if (metricRoomsEl) metricRoomsEl.textContent = "0";
+    if (metricCompletedEl) metricCompletedEl.textContent = "0";
 
     const overviewRoomList = document.getElementById("overviewRoomList");
     if (overviewRoomList) {

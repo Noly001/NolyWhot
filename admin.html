@@ -264,14 +264,15 @@
 </head>
 <body>
 
-    <!-- Security Passcode Authentication Overlay -->
+    <!-- Firebase Email/Password Admin Security Overlay -->
     <div id="authOverlay">
         <div class="auth-card">
-            <h2>👑 NolyWhot Admin Login</h2>
-            <p style="color: #e0d0a0; font-size: 14px;">Enter Administrator Authorization Passcode</p>
-            <input type="password" id="adminPasscode" placeholder="Enter Admin Key" autocomplete="off">
-            <button id="authLoginBtn">AUTHENTICATE</button>
-            <div id="authError" class="auth-error">Invalid Administrator Key.</div>
+            <h2>👑 NolyWhot Admin Portal</h2>
+            <p style="color: #e0d0a0; font-size: 14px;">Firebase Administrator Login</p>
+            <input type="email" id="adminEmail" placeholder="Admin Email" autocomplete="username" style="margin-bottom: 10px;">
+            <input type="password" id="adminPassword" placeholder="Admin Password" autocomplete="current-password">
+            <button id="authLoginBtn">AUTHENTICATE ADMIN</button>
+            <div id="authError" class="auth-error">Invalid Administrator Credentials.</div>
         </div>
     </div>
 
