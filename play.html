@@ -47,6 +47,22 @@ content="width=device-width, initial-scale=1.0, user-scalable=no">
     </p>
 
     <!-- ===========================
+         MATCH STAKE & PRIZE CONFIG
+    =========================== -->
+    <div class="stake-selector-card">
+        <h4>🎲 MATCH STAKE & CASH PRIZE</h4>
+        <div class="stake-options-grid">
+            <button class="stake-opt-btn selected" data-stake="0" data-fee="0" data-prize="0">FREE PRACTICE</button>
+            <button class="stake-opt-btn" data-stake="200" data-fee="20" data-prize="360">₦200 STAKE</button>
+            <button class="stake-opt-btn" data-stake="500" data-fee="50" data-prize="900">₦500 STAKE</button>
+            <button class="stake-opt-btn" data-stake="1000" data-fee="100" data-prize="1800">₦1,000 STAKE</button>
+        </div>
+        <div class="stake-info-summary" id="stakeSummaryText">
+            Mode: Free Practice (No entry fee, 0 PTS stake)
+        </div>
+    </div>
+
+    <!-- ===========================
          QUICK MATCH
     =========================== -->
 
@@ -435,6 +451,34 @@ Star
     </button>
 
 </div>
+
+<!-- ===========================
+     STAKE SELECTOR JS
+=========================== -->
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const stakeBtns = document.querySelectorAll(".stake-opt-btn");
+    const stakeSummary = document.getElementById("stakeSummaryText");
+
+    stakeBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+            stakeBtns.forEach(b => b.classList.remove("selected"));
+            btn.classList.add("selected");
+
+            const stake = btn.getAttribute("data-stake");
+            const fee = btn.getAttribute("data-fee");
+            const prize = btn.getAttribute("data-prize");
+
+            if (stake === "0") {
+                stakeSummary.textContent = "Mode: Free Practice (No entry fee, 0 PTS stake)";
+            } else {
+                stakeSummary.textContent = `Entry: ₦${stake} | Platform Fee (10%): ₦${fee} | Winner Prize: ₦${prize}`;
+            }
+        });
+    });
+});
+</script>
+
 <!-- ===========================
      MODE CONTROL
 =========================== -->

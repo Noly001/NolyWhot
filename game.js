@@ -3121,11 +3121,18 @@ function startTimer(){
 
     clearInterval(timer);
 
+    if (gameOver) return;
+
     timeLeft=20;
 
     timerText.textContent=timeLeft;
 
     timer=setInterval(()=>{
+
+        if (gameOver) {
+            clearInterval(timer);
+            return;
+        }
 
         timeLeft--;
 
@@ -3135,7 +3142,7 @@ function startTimer(){
 
             clearInterval(timer);
 
-            if(playerTurn){
+            if(playerTurn && !gameOver){
 
                 pickCard();
 

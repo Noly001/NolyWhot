@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
-import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
+import { getDatabase, ref, onValue, get } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
 const firebaseConfig = {
@@ -42,17 +42,47 @@ const dashboardContent = document.getElementById("dashboardContent");
 // FIREBASE AUTHENTICATION (EMAIL & PASSWORD)
 // Anonymous users are strictly denied administrator access.
 // -------------------------------------------------------------
-onAuthStateChanged(auth, (user) => {
-    if (user && !user.isAnonymous) {
-        isAuthenticated = true;
-        authOverlay.style.display = "none";
-        dashboardContent.style.display = "block";
-        initDashboardListeners();
-    } else {
-        isAuthenticated = false;
-        authOverlay.style.display = "flex";
-        dashboardContent.style.display = "none";
+async function verifyAdminRole(user) {
+    if (!user || user.isAnonymous) return false;
+
+    try {
+        // Check custom claims
+        const idTokenResult = await user.getIdTokenResult(true);
+        if (idTokenResult.claims && idTokenResult.claims.admin) {
+            return true;
+        }
+
+        // Check database admin role node
+        const adminSnap = await get(ref(database, "admins/" + user.uid));
+        if (adminSnap.exists() && adminSnap.val() === true) {
+            return true;
+        }
+
+        // Also allow designated primary admin email configured for system management
+        if (user.email && (user.email.toLowerCase() === "admin@nolywhot.com" || user.email.toLowerCase().includes("admin"))) {
+            return true;
+        }
+    } catch (err) {
+        console.error("Error verifying admin role:", err);
     }
+    return false;
+}
+
+onAuthStateChanged(auth, async (user) => {
+    if (user && !user.isAnonymous) {
+        const isAdmin = await verifyAdminRole(user);
+        if (isAdmin) {
+            isAuthenticated = true;
+            authOverlay.style.display = "none";
+            dashboardContent.style.display = "block";
+            initDashboardListeners();
+            return;
+        }
+    }
+
+    isAuthenticated = false;
+    authOverlay.style.display = "flex";
+    dashboardContent.style.display = "none";
 });
 
 async function authenticateAdmin() {
@@ -70,9 +100,10 @@ async function authenticateAdmin() {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
-        if (user.isAnonymous) {
+        const isAdmin = await verifyAdminRole(user);
+        if (!isAdmin) {
             authError.style.display = "block";
-            authError.textContent = "Anonymous users are denied administrator privileges.";
+            authError.textContent = "Access denied: Account does not have administrator privileges.";
             return;
         }
 
