@@ -1,0 +1,26 @@
+{
+  "rules": {
+    "rooms": {
+      "$room_id": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "quickMatch": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "admins": {
+      "$uid": {
+        ".read": "auth != null && (auth.token.admin === true || data.child('role').val() === 'admin')",
+        ".write": "false"
+      }
+    },
+    "financials": {
+      ".read": "auth != null && auth.token.admin === true",
+      ".write": "false"
+    }
+  }
+}

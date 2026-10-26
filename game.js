@@ -996,6 +996,8 @@ if(gameOver){
     // SHOW RESULT
     // ==============================
 
+    updateBoard();
+
     gameOverScreen.classList.remove(
         "hidden"
     );
@@ -1007,7 +1009,7 @@ if(gameOver){
 
             else if(playerTurn){
 
-                startTurnTimer();
+                startTimer();
 
             }
 
@@ -1741,6 +1743,18 @@ const specialSound = new Audio("assets/sounds/spacial.mp3");
 const winSound = new Audio("assets/sounds/Win.mp3");
 const loseSound = new Audio("assets/sounds/Lose.mp3");
 
+function safePlayAudio(audio) {
+    if (audio && typeof audio.play === "function") {
+        try {
+            audio.currentTime = 0;
+            const promise = audio.play();
+            if (promise !== undefined) {
+                promise.catch(function() {});
+            }
+        } catch (e) {}
+    }
+}
+
 const SHAPES = [
     "circle",
     "triangle",
@@ -1984,7 +1998,7 @@ function startGame(){
 
     opponentHand=[];
 
-    for(let i=0;i<6;i++){
+    for(let i=0;i<5;i++){
 
         playerHand.push(drawCard());
 
@@ -2037,10 +2051,10 @@ function startOnlineGame(){
     opponentHand = [];
 
     // ==========================
-    // DEAL 6 CARDS EACH
+    // DEAL 5 CARDS EACH
     // ==========================
 
-    for(let i = 0; i < 6; i++){
+    for(let i = 0; i < 5; i++){
 
         const playerCard = drawCard();
         const opponentCard = drawCard();
@@ -3421,7 +3435,14 @@ function checkMarketWinner(){
 
 homeButton.onclick=function(){
 
-    window.location.href="index.html";
+    if(typeof stopVoiceCall === "function"){
+        try { stopVoiceCall(); } catch(e){}
+    }
+    if(typeof cancelQuickMatch === "function" && quickMatchActive){
+        try { cancelQuickMatch(); } catch(e){}
+    }
+    clearInterval(timer);
+    window.location.href="play.html?mode=select";
 
 };
 // =====================================
