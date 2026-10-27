@@ -54,14 +54,13 @@ async function verifyAdminRole(user) {
 
         // Check database admin role node
         const adminSnap = await get(ref(database, "admins/" + user.uid));
-        if (adminSnap.exists() && adminSnap.val() === true) {
-            return true;
+        if (adminSnap.exists()) {
+            const val = adminSnap.val();
+            if (val === true || val === "admin" || (typeof val === "object" && val.role === "admin")) {
+                return true;
+            }
         }
 
-        // Explicit exact admin email check
-        if (user.email && user.email.toLowerCase() === "admin@nolywhot.com") {
-            return true;
-        }
     } catch (err) {
         console.error("Error verifying admin role:", err);
     }

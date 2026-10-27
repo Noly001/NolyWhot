@@ -3445,7 +3445,7 @@ homeButton.onclick=function(){
     if(typeof stopVoiceCall === "function"){
         try { stopVoiceCall(); } catch(e){}
     }
-    if(typeof cancelQuickMatch === "function" && quickMatchActive){
+    if(typeof cancelQuickMatch === "function" && typeof quickMatchActive !== "undefined" && quickMatchActive){
         try { cancelQuickMatch(); } catch(e){}
     }
     clearInterval(timer);

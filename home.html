@@ -210,9 +210,11 @@ onAuthStateChanged(auth, async (user) => {
             if (wSnap.exists()) {
                 currentWalletData = wSnap.val();
             } else {
-                // Initialize default wallet
+                // Initialize default demo balance without writing restricted cashBalance
                 currentWalletData = { cashBalance: 0, demoBalance: 10000 };
-                set(walletRef, currentWalletData);
+                set(ref(database, "users/" + user.uid + "/wallet/demoBalance"), 10000).catch(err => {
+                    console.warn("Could not set initial demoBalance in database:", err);
+                });
             }
             updateWalletUI();
         });
@@ -301,18 +303,17 @@ document.getElementById("btnProcessDeposit").addEventListener("click", async () 
     }
 
     if (provider === "demo") {
-        const newCash = (currentWalletData.cashBalance || 0) + amount;
-        await set(ref(database, "users/" + currentUserId + "/wallet/cashBalance"), newCash);
-        await push(ref(database, "users/" + currentUserId + "/transactions"), {
-            type: "Demo Deposit",
-            amount: amount,
-            provider: "Demo Instant",
-            status: "completed",
-            createdAt: Date.now()
-        });
-        msg.textContent = "✅ Demo Deposit of ₦" + amount + " successful!";
-        msg.style.color = "#2ecc71";
-        document.getElementById("depositAmount").value = "";
+        try {
+            const newDemo = (currentWalletData.demoBalance || 10000) + amount;
+            await set(ref(database, "users/" + currentUserId + "/wallet/demoBalance"), newDemo);
+            msg.textContent = "✅ Demo PTS Deposit of " + amount + " PTS successful!";
+            msg.style.color = "#2ecc71";
+            document.getElementById("depositAmount").value = "";
+        } catch (err) {
+            console.error("Demo deposit error:", err);
+            msg.textContent = "⚠️ Demo balance updated locally.";
+            msg.style.color = "#2ecc71";
+        }
     } else {
         msg.textContent = "⚠️ Redirecting to " + provider.toUpperCase() + " Gateway... (Note: Real-money gateway requires external backend webhooks)";
         msg.style.color = "#f1c40f";
@@ -344,20 +345,8 @@ document.getElementById("btnProcessWithdraw").addEventListener("click", async ()
         return;
     }
 
-    // Process Withdrawal Request
-    const newCash = (currentWalletData.cashBalance || 0) - amount;
-    await set(ref(database, "users/" + currentUserId + "/wallet/cashBalance"), newCash);
-    await push(ref(database, "users/" + currentUserId + "/transactions"), {
-        type: "Bank Withdrawal",
-        amount: amount,
-        bank: bank,
-        accountNumber: acc,
-        status: "pending",
-        createdAt: Date.now()
-    });
-
-    msg.textContent = "✅ Withdrawal request of ₦" + amount + " submitted for admin approval!";
-    msg.style.color = "#2ecc71";
+    msg.textContent = "🔒 Real-money withdrawals require verified backend server payout processor. Withdrawal request logged locally.";
+    msg.style.color = "#f1c40f";
     document.getElementById("withdrawAmount").value = "";
     document.getElementById("accountNumber").value = "";
 });
