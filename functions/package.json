@@ -1,0 +1,20 @@
+{
+  "name": "nolywhot-functions",
+  "description": "NolyWhot Real-Money Gaming & Wallet Escrow Backend Services",
+  "version": "1.0.0",
+  "scripts": {
+    "serve": "firebase serve --only functions",
+    "shell": "firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions"
+  },
+  "engines": {
+    "node": "18"
+  },
+  "dependencies": {
+    "firebase-admin": "^11.8.0",
+    "firebase-functions": "^4.3.1",
+    "crypto": "^1.0.1"
+  },
+  "private": true
+}

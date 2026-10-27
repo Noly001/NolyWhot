@@ -33,6 +33,15 @@ content="width=device-width, initial-scale=1.0, user-scalable=no">
         ONLINE MULTIPLAYER
     </button>
 
+        <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+            <a href="home.html" class="action-btn action-btn-dark" style="text-decoration: none; padding: 10px 18px; font-size: 14px;">
+                💳 MY WALLET
+            </a>
+            <a href="admin.html" class="action-btn action-btn-dark" style="text-decoration: none; padding: 10px 18px; font-size: 14px;">
+                🏛️ ADMIN DASHBOARD
+            </a>
+        </div>
+
 </div>
 <!-- ===========================
      ONLINE MULTIPLAYER LOBBY
@@ -45,6 +54,22 @@ content="width=device-width, initial-scale=1.0, user-scalable=no">
     <p id="lobbyMessage">
         Choose how you want to play
     </p>
+
+    <!-- ===========================
+         MATCH STAKE & PRIZE CONFIG
+    =========================== -->
+    <div class="stake-selector-card">
+        <h4>🎲 MATCH STAKE & CASH PRIZE</h4>
+        <div class="stake-options-grid">
+            <button class="stake-opt-btn selected" data-stake="0" data-fee="0" data-prize="0">FREE PRACTICE</button>
+            <button class="stake-opt-btn" data-stake="200" data-fee="20" data-prize="360">₦200 STAKE</button>
+            <button class="stake-opt-btn" data-stake="500" data-fee="50" data-prize="900">₦500 STAKE</button>
+            <button class="stake-opt-btn" data-stake="1000" data-fee="100" data-prize="1800">₦1,000 STAKE</button>
+        </div>
+        <div class="stake-info-summary" id="stakeSummaryText">
+            Mode: Free Practice (No entry fee, 0 PTS stake)
+        </div>
+    </div>
 
     <!-- ===========================
          QUICK MATCH
@@ -155,6 +180,8 @@ TIME
 </div>
 
 </div>
+
+<button id="soundToggleButton" onclick="toggleMute()" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: rgba(0,0,0,0.6); color: #f5c542; border: 1px solid #f5c542; border-radius: 6px; cursor: pointer; margin-left: 8px;">🔊 Sound ON</button>
 
 </header>
 
@@ -435,6 +462,34 @@ Star
     </button>
 
 </div>
+
+<!-- ===========================
+     STAKE SELECTOR JS
+=========================== -->
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const stakeBtns = document.querySelectorAll(".stake-opt-btn");
+    const stakeSummary = document.getElementById("stakeSummaryText");
+
+    stakeBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+            stakeBtns.forEach(b => b.classList.remove("selected"));
+            btn.classList.add("selected");
+
+            const stake = btn.getAttribute("data-stake");
+            const fee = btn.getAttribute("data-fee");
+            const prize = btn.getAttribute("data-prize");
+
+            if (stake === "0") {
+                stakeSummary.textContent = "Mode: Free Practice (No entry fee, 0 PTS stake)";
+            } else {
+                stakeSummary.textContent = `Entry: ₦${stake} | Platform Fee (10%): ₦${fee} | Winner Prize: ₦${prize}`;
+            }
+        });
+    });
+});
+</script>
+
 <!-- ===========================
      MODE CONTROL
 =========================== -->

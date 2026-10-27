@@ -1743,15 +1743,106 @@ const specialSound = new Audio("assets/sounds/spacial.mp3");
 const winSound = new Audio("assets/sounds/Win.mp3");
 const loseSound = new Audio("assets/sounds/Lose.mp3");
 
-function safePlayAudio(audio) {
+let audioCtx = null;
+let isMuted = false;
+
+function getAudioContext() {
+    if (!audioCtx && (window.AudioContext || window.webkitAudioContext)) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContextClass();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+    }
+    return audioCtx;
+}
+
+function playSyntheticTone(type) {
+    if (isMuted) return;
+    try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        const now = ctx.currentTime;
+
+        if (type === 'play') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(440, now);
+            osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
+            gain.gain.setValueAtTime(0.15, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+            osc.start(now);
+            osc.stop(now + 0.08);
+        } else if (type === 'special') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(523.25, now);
+            osc.frequency.setValueAtTime(659.25, now + 0.1);
+            osc.frequency.setValueAtTime(783.99, now + 0.2);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+            osc.start(now);
+            osc.stop(now + 0.35);
+        } else if (type === 'win') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(523.25, now);
+            osc.frequency.setValueAtTime(659.25, now + 0.15);
+            osc.frequency.setValueAtTime(783.99, now + 0.3);
+            osc.frequency.setValueAtTime(1046.50, now + 0.45);
+            gain.gain.setValueAtTime(0.25, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+            osc.start(now);
+            osc.stop(now + 0.6);
+        } else if (type === 'lose') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(400, now);
+            osc.frequency.exponentialRampToValueAtTime(200, now + 0.4);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+            osc.start(now);
+            osc.stop(now + 0.4);
+        } else if (type === 'draw' || type === 'shuffle') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(300, now);
+            osc.frequency.exponentialRampToValueAtTime(150, now + 0.06);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.06);
+            osc.start(now);
+            osc.stop(now + 0.06);
+        }
+    } catch (e) {
+        console.warn("Synthetic audio playback:", e);
+    }
+}
+
+function safePlayAudio(audio, soundType) {
+    if (isMuted) return;
     if (audio && typeof audio.play === "function") {
         try {
             audio.currentTime = 0;
             const promise = audio.play();
             if (promise !== undefined) {
-                promise.catch(function() {});
+                promise.catch(function() {
+                    playSyntheticTone(soundType);
+                });
             }
-        } catch (e) {}
+        } catch (e) {
+            playSyntheticTone(soundType);
+        }
+    } else {
+        playSyntheticTone(soundType);
+    }
+}
+
+function toggleMute() {
+    isMuted = !isMuted;
+    const soundBtn = document.getElementById("soundToggleButton");
+    if (soundBtn) {
+        soundBtn.innerHTML = isMuted ? "🔇 Muted" : "🔊 Sound ON";
     }
 }
 
@@ -1778,6 +1869,7 @@ let playerTurn = true;
 
 let gameOver = false;
 
+let isOpponentThinking = false;
 let requestedShape = null;
 let pickTwoActive = false;
 let generalMarketActive = false;
@@ -1985,6 +2077,8 @@ function startGame(){
     clearInterval(timer);
 
     gameOver=false;
+
+    isOpponentThinking = false;
 
     requestedShape=null;
 
@@ -2376,6 +2470,12 @@ function updateBoard(){
 
     updateScores();
 
+    if (!playerTurn || (topCard && topCard.number !== 20)) {
+        if (shapeChooser && !shapeChooser.classList.contains("hidden")) {
+            shapeChooser.classList.add("hidden");
+        }
+    }
+
     if(requestedShape){
 
         messageText.textContent =
@@ -2479,12 +2579,15 @@ function playCard(index){
 
         topCard = card;
 
+        if(card.number !== 20){
+            requestedShape = null;
+        }
+
         // ==========================
         // SOUND
         // ==========================
 
-        playSound.currentTime = 0;
-        playSound.play();
+        safePlayAudio(playSound, "play");
 
         // ==========================
         // WHOT (20)
@@ -2508,8 +2611,7 @@ function playCard(index){
 
             }
 
-            specialSound.currentTime = 0;
-            specialSound.play();
+            safePlayAudio(specialSound, "special");
 
             // ==========================
             // ONLINE MODE
@@ -2888,7 +2990,14 @@ shapeButtons.forEach(button=>{
 
 function opponentPlay(){
 
-    if(gameOver) return;
+    if(gameOver || onlineMode || playerTurn) {
+        isOpponentThinking = false;
+        return;
+    }
+
+    if(isOpponentThinking) return;
+
+    isOpponentThinking = true;
 
     clearInterval(timer);
 
@@ -2933,6 +3042,8 @@ function opponentPlay(){
 
             updateBoard();
 
+            isOpponentThinking = false;
+
             playerTurn = true;
 
             startTimer();
@@ -2944,6 +3055,8 @@ function opponentPlay(){
         if(index === -1){
 
             updateBoard();
+
+            isOpponentThinking = false;
 
             playerTurn = true;
 
@@ -2964,19 +3077,35 @@ function opponentPlay(){
     if(cardElement){
 
         cardElement.classList.add("playing");
+
     }
 
     setTimeout(()=>{
 
+        const actualIndex = opponentHand.indexOf(chosenCard);
+
+        if(actualIndex === -1 || gameOver){
+
+            isOpponentThinking = false;
+
+            playerTurn = true;
+
+            updateBoard();
+
+            startTimer();
+
+            return;
+
+        }
+
         // Remove selected card from computer hand
-        const card = opponentHand.splice(index,1)[0];
+        const card = opponentHand.splice(actualIndex, 1)[0];
 
         // Put card on center
         topCard = card;
 
         // Sound
-        playSound.currentTime = 0;
-        playSound.play();
+        safePlayAudio(playSound, "play");
 
         // Display played card
         displayPlayedCard();
@@ -3015,9 +3144,11 @@ function opponentPlay(){
 
             checkWinner();
 
+            isOpponentThinking = false;
+
             if(!gameOver){
 
-                setTimeout(opponentPlay,800);
+                setTimeout(opponentPlay, 800);
 
             }
 
@@ -3032,9 +3163,11 @@ function opponentPlay(){
         if(card.number === 2){
 
             const c1 = drawCard();
+
             const c2 = drawCard();
 
             if(c1) playerHand.push(c1);
+
             if(c2) playerHand.push(c2);
 
             messageText.textContent =
@@ -3042,8 +3175,10 @@ function opponentPlay(){
 
             updateBoard();
 
+            isOpponentThinking = false;
+
             // Computer continues playing
-            setTimeout(opponentPlay,800);
+            setTimeout(opponentPlay, 800);
 
             return;
 
@@ -3059,9 +3194,11 @@ function opponentPlay(){
 
             checkWinner();
 
+            isOpponentThinking = false;
+
             if(!gameOver){
 
-                setTimeout(opponentPlay,800);
+                setTimeout(opponentPlay, 800);
 
             }
 
@@ -3088,8 +3225,10 @@ function opponentPlay(){
 
             updateBoard();
 
+            isOpponentThinking = false;
+
             // Computer continues playing
-            setTimeout(opponentPlay,800);
+            setTimeout(opponentPlay, 800);
 
             return;
 
@@ -3102,6 +3241,8 @@ function opponentPlay(){
 
         checkWinner();
 
+        isOpponentThinking = false;
+
         if(gameOver) return;
 
         updateBoard();
@@ -3110,7 +3251,7 @@ function opponentPlay(){
 
         startTimer();
 
-    },450);
+    }, 450);
 
 }
 // =====================================
@@ -3121,11 +3262,18 @@ function startTimer(){
 
     clearInterval(timer);
 
+    if (gameOver) return;
+
     timeLeft=20;
 
     timerText.textContent=timeLeft;
 
     timer=setInterval(()=>{
+
+        if (gameOver) {
+            clearInterval(timer);
+            return;
+        }
 
         timeLeft--;
 
@@ -3135,7 +3283,7 @@ function startTimer(){
 
             clearInterval(timer);
 
-            if(playerTurn){
+            if(playerTurn && !gameOver){
 
                 pickCard();
 
@@ -3187,8 +3335,10 @@ function checkWinner(){
         }
 
         // ==============================
-        // SHOW RESULT
+        // SHOW RESULT & AUDIO
         // ==============================
+
+        safePlayAudio(winSound, "win");
 
         gameOverScreen.classList.remove(
             "hidden"
@@ -3244,8 +3394,10 @@ function checkWinner(){
         }
 
         // ==============================
-        // SHOW RESULT
+        // SHOW RESULT & AUDIO
         // ==============================
+
+        safePlayAudio(loseSound, "lose");
 
         gameOverScreen.classList.remove(
             "hidden"
@@ -3438,7 +3590,7 @@ homeButton.onclick=function(){
     if(typeof stopVoiceCall === "function"){
         try { stopVoiceCall(); } catch(e){}
     }
-    if(typeof cancelQuickMatch === "function" && quickMatchActive){
+    if(typeof cancelQuickMatch === "function" && typeof quickMatchActive !== "undefined" && quickMatchActive){
         try { cancelQuickMatch(); } catch(e){}
     }
     clearInterval(timer);
@@ -5550,3 +5702,11 @@ if (declineVoiceButton) {
 function stopVoiceCall() {
     endVoiceChat(true);
 }
+
+document.addEventListener("click", function () {
+    getAudioContext();
+}, { once: true });
+
+document.addEventListener("touchstart", function () {
+    getAudioContext();
+}, { once: true });
