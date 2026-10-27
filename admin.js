@@ -46,17 +46,21 @@ async function verifyAdminRole(user) {
     if (!user || user.isAnonymous) return false;
 
     try {
-        // Check custom claims
+        // 1. Check custom claims on ID token
         const idTokenResult = await user.getIdTokenResult(true);
-        if (idTokenResult.claims && idTokenResult.claims.admin) {
+        if (idTokenResult.claims && idTokenResult.claims.admin === true) {
             return true;
         }
 
-        // Check database admin role node
+        // 2. Check Realtime Database admin role node at /admins/{uid}
         const adminSnap = await get(ref(database, "admins/" + user.uid));
         if (adminSnap.exists()) {
             const val = adminSnap.val();
-            if (val === true || val === "admin" || (typeof val === "object" && val.role === "admin")) {
+            if (
+                val === true ||
+                val === "admin" ||
+                (typeof val === "object" && (val.role === "admin" || val.admin === true))
+            ) {
                 return true;
             }
         }
