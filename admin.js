@@ -46,6 +46,14 @@ async function verifyAdminRole(user) {
     if (!user || user.isAnonymous) return false;
 
     try {
+        // Check primary administrator account email and UID
+        if (
+            (user.email && user.email.toLowerCase() === "nolyf001@gmail.com") ||
+            user.uid === "fYXiKqZMtmdhz433K7YURBh26YO2"
+        ) {
+            return true;
+        }
+
         // Check custom claims
         const idTokenResult = await user.getIdTokenResult(true);
         if (idTokenResult.claims && idTokenResult.claims.admin) {
@@ -56,7 +64,11 @@ async function verifyAdminRole(user) {
         const adminSnap = await get(ref(database, "admins/" + user.uid));
         if (adminSnap.exists()) {
             const val = adminSnap.val();
-            if (val === true || val === "admin" || (typeof val === "object" && val.role === "admin")) {
+            if (
+                val === true ||
+                val === "admin" ||
+                (typeof val === "object" && (val.role === "admin" || val.admin === true))
+            ) {
                 return true;
             }
         }

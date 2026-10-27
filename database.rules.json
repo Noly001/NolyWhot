@@ -14,7 +14,7 @@
     },
     "admins": {
       "$uid": {
-        ".read": "auth != null && (auth.token.admin === true || data.child('role').val() === 'admin')",
+        ".read": "auth != null && (auth.uid === $uid || auth.token.admin === true || data.child('role').val() === 'admin' || data.val() === 'admin' || data.val() === true)",
         ".write": "false"
       }
     },
