@@ -1,12 +1,13 @@
 /**
- * NolyWhot Server-Side Real-Money Gaming & Escrow Cloud Functions
- * Supports Paystack & Flutterwave Webhooks, HMAC Validation, Atomic Wallet Ledger,
- * Match Escrow, Platform Fee Calculation, and Withdrawal Authorization.
+ * NolyWhot Server-Side Real-Money Gaming, Automated Paystack Deposits & Payout Cloud Functions
+ * Supports Server-to-Server Paystack Verification, Automatic Bank Withdrawals, HMAC SHA512 Webhooks,
+ * Idempotency Protection, Atomic Wallet Balances, Escrow Locking, and Match Settlement.
  */
 
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const crypto = require("crypto");
+const https = require("https");
 
 admin.initializeApp();
 const db = admin.database();
@@ -16,8 +17,138 @@ const FLUTTERWAVE_SECRET_HASH = process.env.FLUTTERWAVE_SECRET_HASH || "nolywhot
 const PLATFORM_FEE_PERCENT = 0.10; // 10% Platform fee
 
 /**
+ * Helper function: Perform HTTPS Request to Paystack REST API
+ */
+function makePaystackRequest(path, method, data = null) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: "api.paystack.co",
+      port: 443,
+      path: path,
+      method: method,
+      headers: {
+        Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+        "Content-Type": "application/json"
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(body);
+          resolve(parsed);
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+
+    req.on("error", (err) => reject(err));
+    if (data) {
+      req.write(JSON.stringify(data));
+    }
+    req.end();
+  });
+}
+
+/**
+ * Server-Side Verification Callable Function for Paystack Deposits
+ * Client sends reference. Server queries Paystack API, verifies amount, currency, and status,
+ * and atomically credits user's cash balance if valid.
+ */
+exports.verifyPaystackDeposit = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
+  }
+
+  const userId = context.auth.uid;
+  const reference = data.reference;
+
+  if (!reference) {
+    throw new functions.https.HttpsError("invalid-argument", "Transaction reference is required.");
+  }
+
+  // 1. Idempotency Check
+  const refCheck = await db.ref(`processedTransactions/${reference}`).once("value");
+  if (refCheck.exists()) {
+    const existing = refCheck.val();
+    return {
+      success: true,
+      message: "Transaction already processed and credited.",
+      amount: existing.amount
+    };
+  }
+
+  // 2. Query Paystack Verification Endpoint (Server-to-Server)
+  let paystackRes;
+  try {
+    paystackRes = await makePaystackRequest(`/transaction/verify/${encodeURIComponent(reference)}`, "GET");
+  } catch (err) {
+    console.error("Paystack API Request Failed:", err);
+    throw new functions.https.HttpsError("internal", "Could not verify payment with gateway.");
+  }
+
+  if (!paystackRes || !paystackRes.status || !paystackRes.data) {
+    throw new functions.https.HttpsError("failed-precondition", "Payment verification failed or invalid reference.");
+  }
+
+  const txData = paystackRes.data;
+
+  // 3. Verify Payment Criteria
+  if (txData.status !== "success") {
+    // Record failed attempt
+    await db.ref(`users/${userId}/transactions/${reference}`).set({
+      type: "DEPOSIT",
+      amount: txData.amount ? txData.amount / 100 : 0,
+      currency: txData.currency || "NGN",
+      status: "FAILED",
+      reference: reference,
+      createdAt: admin.database.ServerValue.TIMESTAMP
+    });
+    throw new functions.https.HttpsError("failed-precondition", `Payment status is ${txData.status}. Deposit not credited.`);
+  }
+
+  if (txData.currency !== "NGN") {
+    throw new functions.https.HttpsError("failed-precondition", "Invalid transaction currency.");
+  }
+
+  const creditedAmount = txData.amount / 100; // Convert kobo to Naira
+
+  // 4. Atomic Balance Update in Realtime Database
+  await db.ref(`users/${userId}/wallet/cashBalance`).transaction((current) => {
+    return (current || 0) + creditedAmount;
+  });
+
+  // 5. Save Idempotency & Transaction Ledger Record
+  await db.ref(`processedTransactions/${reference}`).set({
+    userId: userId,
+    amount: creditedAmount,
+    gateway: "PAYSTACK",
+    processedAt: admin.database.ServerValue.TIMESTAMP
+  });
+
+  await db.ref(`users/${userId}/transactions/${reference}`).set({
+    type: "DEPOSIT",
+    amount: creditedAmount,
+    currency: "NGN",
+    gateway: "PAYSTACK",
+    status: "SUCCESS",
+    reference: reference,
+    createdAt: admin.database.ServerValue.TIMESTAMP
+  });
+
+  return {
+    success: true,
+    message: `Successfully verified deposit of ₦${creditedAmount.toLocaleString()}.`,
+    amount: creditedAmount
+  };
+});
+
+/**
  * Paystack Webhook Handler
- * Verifies HMAC SHA512 signature before processing deposit event.
+ * Processes async charge and transfer notifications with HMAC SHA512 signature validation.
  */
 exports.paystackWebhook = functions.https.onRequest(async (req, res) => {
   try {
@@ -37,117 +168,206 @@ exports.paystackWebhook = functions.https.onRequest(async (req, res) => {
     }
 
     const event = req.body;
-    if (event.event === "charge.success") {
-      const data = event.data;
+    const eventType = event.event;
+    const data = event.data;
+
+    // A. DEPOSIT SUCCESS WEBHOOK
+    if (eventType === "charge.success") {
       const reference = data.reference;
-      const amount = data.amount / 100; // Convert kobo to Naira
-      const userEmail = data.customer.email;
+      const amount = data.amount / 100; // kobo to Naira
+      const userEmail = data.customer ? data.customer.email : null;
 
-      // Idempotency check: Ensure reference was not processed before
       const refCheck = await db.ref(`processedTransactions/${reference}`).once("value");
-      if (refCheck.exists()) {
-        return res.status(200).send("Transaction already processed.");
+      if (!refCheck.exists() && userEmail) {
+        const usersSnap = await db.ref("users").orderByChild("email").equalTo(userEmail).once("value");
+        if (usersSnap.exists()) {
+          const userId = Object.keys(usersSnap.val())[0];
+
+          await db.ref(`users/${userId}/wallet/cashBalance`).transaction((current) => {
+            return (current || 0) + amount;
+          });
+
+          await db.ref(`processedTransactions/${reference}`).set({
+            userId: userId,
+            amount: amount,
+            gateway: "PAYSTACK_WEBHOOK",
+            processedAt: admin.database.ServerValue.TIMESTAMP
+          });
+
+          await db.ref(`users/${userId}/transactions/${reference}`).set({
+            type: "DEPOSIT",
+            amount: amount,
+            currency: "NGN",
+            gateway: "PAYSTACK_WEBHOOK",
+            status: "SUCCESS",
+            reference: reference,
+            createdAt: admin.database.ServerValue.TIMESTAMP
+          });
+        }
       }
-
-      // Locate user by email
-      const usersSnap = await db.ref("users").orderByChild("email").equalTo(userEmail).once("value");
-      if (!usersSnap.exists()) {
-        console.error("User not found for email:", userEmail);
-        return res.status(404).send("User not found.");
-      }
-
-      const userId = Object.keys(usersSnap.val())[0];
-
-      // Atomic balance update
-      await db.ref(`users/${userId}/cashBalance`).transaction((current) => {
-        return (current || 0) + amount;
-      });
-
-      // Record transaction history
-      const txRef = db.ref(`walletTransactions/${userId}`).push();
-      await txRef.set({
-        type: "DEPOSIT",
-        gateway: "PAYSTACK",
-        reference: reference,
-        amount: amount,
-        status: "SUCCESS",
-        timestamp: admin.database.ServerValue.TIMESTAMP
-      });
-
-      // Mark reference as processed
-      await db.ref(`processedTransactions/${reference}`).set({
-        userId: userId,
-        amount: amount,
-        processedAt: admin.database.ServerValue.TIMESTAMP
-      });
     }
 
-    return res.status(200).send("Webhook received.");
+    // B. TRANSFER / WITHDRAWAL SUCCESS WEBHOOK
+    else if (eventType === "transfer.success") {
+      const transferCode = data.transfer_code || data.reference;
+      const txSnap = await db.ref(`pendingWithdrawals/${transferCode}`).once("value");
+      if (txSnap.exists()) {
+        const withdrawData = txSnap.val();
+        await db.ref(`pendingWithdrawals/${transferCode}/status`).set("SUCCESS");
+        await db.ref(`users/${withdrawData.userId}/transactions/${transferCode}/status`).set("SUCCESS");
+      }
+    }
+
+    // C. TRANSFER / WITHDRAWAL FAILED OR REVERSED WEBHOOK (AUTOMATIC REFUND)
+    else if (eventType === "transfer.failed" || eventType === "transfer.reversed") {
+      const transferCode = data.transfer_code || data.reference;
+      const txSnap = await db.ref(`pendingWithdrawals/${transferCode}`).once("value");
+      if (txSnap.exists()) {
+        const withdrawData = txSnap.val();
+        if (withdrawData.status !== "REFUNDED") {
+          // Refund reserved amount back to user's cash balance
+          await db.ref(`users/${withdrawData.userId}/wallet/cashBalance`).transaction((current) => {
+            return (current || 0) + withdrawData.amount;
+          });
+
+          await db.ref(`pendingWithdrawals/${transferCode}/status`).set("REFUNDED");
+          await db.ref(`users/${withdrawData.userId}/transactions/${transferCode}/status`).set("FAILED_REFUNDED");
+        }
+      }
+    }
+
+    return res.status(200).send("Webhook handled successfully.");
   } catch (error) {
-    console.error("Paystack Webhook Error:", error);
+    console.error("Paystack Webhook Processing Error:", error);
     return res.status(500).send("Internal server error.");
   }
 });
 
 /**
- * Flutterwave Webhook Handler
+ * Automated Bank Withdrawal Function
+ * Deducts/reserves user balance atomically, creates Paystack Transfer Recipient,
+ * initiates Paystack Automated Transfer, and handles success or automatic refund.
  */
-exports.flutterwaveWebhook = functions.https.onRequest(async (req, res) => {
+exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
+  }
+
+  const userId = context.auth.uid;
+  const amount = Number(data.amount);
+  const accountNumber = data.accountNumber ? String(data.accountNumber).trim() : "";
+  const bankCode = data.bankCode ? String(data.bankCode).trim() : "";
+  const accountName = data.accountName ? String(data.accountName).trim() : "NolyWhot Player";
+
+  if (isNaN(amount) || amount < 500) {
+    throw new functions.https.HttpsError("invalid-argument", "Minimum withdrawal amount is ₦500.");
+  }
+
+  if (accountNumber.length !== 10 || !/^\d+$/.test(accountNumber)) {
+    throw new functions.https.HttpsError("invalid-argument", "Invalid 10-digit NUBAN account number.");
+  }
+
+  if (!bankCode) {
+    throw new functions.https.HttpsError("invalid-argument", "Bank code is required.");
+  }
+
+  // 1. Reserve / Deduct Balance Atomically to Prevent Double Spending
+  const balanceRef = db.ref(`users/${userId}/wallet/cashBalance`);
+  const result = await balanceRef.transaction((currentBalance) => {
+    if ((currentBalance || 0) < amount) {
+      return; // Abort if insufficient funds
+    }
+    return currentBalance - amount;
+  });
+
+  if (!result.committed) {
+    throw new functions.https.HttpsError("failed-precondition", "Insufficient cash balance for this withdrawal.");
+  }
+
+  const txId = `WD_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+
+  // Log pending withdrawal
+  await db.ref(`pendingWithdrawals/${txId}`).set({
+    userId: userId,
+    amount: amount,
+    accountNumber: accountNumber,
+    bankCode: bankCode,
+    status: "PROCESSING",
+    createdAt: admin.database.ServerValue.TIMESTAMP
+  });
+
+  await db.ref(`users/${userId}/transactions/${txId}`).set({
+    type: "WITHDRAWAL",
+    amount: amount,
+    accountNumber: accountNumber,
+    status: "PROCESSING",
+    reference: txId,
+    createdAt: admin.database.ServerValue.TIMESTAMP
+  });
+
+  // 2. Initiate Paystack Automated Payout
   try {
-    const signature = req.headers["verif-hash"];
-    if (!signature || signature !== FLUTTERWAVE_SECRET_HASH) {
-      return res.status(401).send("Invalid Flutterwave signature.");
+    // Step A: Create Transfer Recipient
+    const recipientRes = await makePaystackRequest("/transferrecipient", "POST", {
+      type: "nuban",
+      name: accountName,
+      account_number: accountNumber,
+      bank_code: bankCode,
+      currency: "NGN"
+    });
+
+    if (!recipientRes.status || !recipientRes.data || !recipientRes.data.recipient_code) {
+      throw new Error(recipientRes.message || "Failed to create transfer recipient.");
     }
 
-    const data = req.body.data;
-    if (req.body.event === "charge.completed" && data.status === "successful") {
-      const reference = data.tx_ref;
-      const amount = data.amount;
-      const userEmail = data.customer.email;
+    const recipientCode = recipientRes.data.recipient_code;
 
-      const refCheck = await db.ref(`processedTransactions/${reference}`).once("value");
-      if (refCheck.exists()) {
-        return res.status(200).send("Transaction already processed.");
-      }
+    // Step B: Initiate Transfer
+    const transferRes = await makePaystackRequest("/transfer", "POST", {
+      source: "balance",
+      amount: amount * 100, // Convert Naira to kobo
+      recipient: recipientCode,
+      reason: "NolyWhot Wallet Withdrawal",
+      reference: txId
+    });
 
-      const usersSnap = await db.ref("users").orderByChild("email").equalTo(userEmail).once("value");
-      if (!usersSnap.exists()) {
-        return res.status(404).send("User not found.");
-      }
-
-      const userId = Object.keys(usersSnap.val())[0];
-
-      await db.ref(`users/${userId}/cashBalance`).transaction((current) => {
-        return (current || 0) + amount;
-      });
-
-      const txRef = db.ref(`walletTransactions/${userId}`).push();
-      await txRef.set({
-        type: "DEPOSIT",
-        gateway: "FLUTTERWAVE",
-        reference: reference,
-        amount: amount,
-        status: "SUCCESS",
-        timestamp: admin.database.ServerValue.TIMESTAMP
-      });
-
-      await db.ref(`processedTransactions/${reference}`).set({
-        userId: userId,
-        amount: amount,
-        processedAt: admin.database.ServerValue.TIMESTAMP
-      });
+    if (!transferRes.status || !transferRes.data) {
+      throw new Error(transferRes.message || "Payout initiation failed.");
     }
 
-    return res.status(200).send("Webhook received.");
+    const transferStatus = transferRes.data.status;
+
+    if (transferStatus === "success" || transferStatus === "pending" || transferStatus === "processing") {
+      await db.ref(`pendingWithdrawals/${txId}/status`).set(transferStatus === "success" ? "SUCCESS" : "PROCESSING");
+      await db.ref(`users/${userId}/transactions/${txId}/status`).set(transferStatus === "success" ? "SUCCESS" : "PROCESSING");
+
+      return {
+        success: true,
+        message: `Automated withdrawal of ₦${amount.toLocaleString()} initiated successfully.`,
+        reference: txId,
+        status: transferStatus
+      };
+    } else {
+      throw new Error(`Transfer status: ${transferStatus}`);
+    }
+
   } catch (error) {
-    console.error("Flutterwave Webhook Error:", error);
-    return res.status(500).send("Internal server error.");
+    console.error("Automated Withdrawal Error:", error);
+
+    // RESTORE RESERVED BALANCE AUTOMATICALLY ON FAILURE
+    await balanceRef.transaction((current) => {
+      return (current || 0) + amount;
+    });
+
+    await db.ref(`pendingWithdrawals/${txId}/status`).set("FAILED_REFUNDED");
+    await db.ref(`users/${userId}/transactions/${txId}/status`).set("FAILED_REFUNDED");
+
+    throw new functions.https.HttpsError("internal", `Withdrawal failed: ${error.message || "Could not process transfer"}. Funds have been restored to your wallet.`);
   }
 });
 
 /**
  * Lock Match Stake Escrow
- * Triggered when a player enters a real-money match lobby.
  */
 exports.lockMatchStake = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -162,20 +382,18 @@ exports.lockMatchStake = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("invalid-argument", "Invalid stake amount.");
   }
 
-  // Atomic deduction with negative balance check
-  const userRef = db.ref(`users/${userId}/cashBalance`);
+  const userRef = db.ref(`users/${userId}/wallet/cashBalance`);
   const result = await userRef.transaction((currentBalance) => {
     if ((currentBalance || 0) < stakeAmount) {
-      return; // Abort transaction if insufficient balance
+      return;
     }
     return currentBalance - stakeAmount;
   });
 
   if (!result.committed) {
-    throw new functions.https.HttpsError("failed-precondition", "Insufficient funds to enter match.");
+    throw new functions.https.HttpsError("failed-precondition", "Insufficient cash balance to enter match.");
   }
 
-  // Escrow funds under match record
   await db.ref(`matchEscrow/${roomId}/${userId}`).set({
     amount: stakeAmount,
     status: "LOCKED",
@@ -187,7 +405,6 @@ exports.lockMatchStake = functions.https.onCall(async (data, context) => {
 
 /**
  * Settle Real-Money Match
- * Server-side prize calculation and platform fee allocation.
  */
 exports.settleMatch = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -212,31 +429,27 @@ exports.settleMatch = functions.https.onCall(async (data, context) => {
     return { success: true, message: "Practice match - no monetary payout required." };
   }
 
-  const totalPool = stakeAmount * 2; // 2-player match pool
+  const totalPool = stakeAmount * 2;
   const platformFee = totalPool * PLATFORM_FEE_PERCENT;
   const winnerPrize = totalPool - platformFee;
 
-  // Credit winner balance
-  await db.ref(`users/${winnerId}/cashBalance`).transaction((current) => {
+  await db.ref(`users/${winnerId}/wallet/cashBalance`).transaction((current) => {
     return (current || 0) + winnerPrize;
   });
 
-  // Record platform revenue
   await db.ref("financialMetrics/platformFees").transaction((current) => {
     return (current || 0) + platformFee;
   });
 
-  // Mark room as settled
   await db.ref(`onlineGames/${roomId}/settled`).set(true);
 
-  // Record transaction ledger
-  await db.ref(`walletTransactions/${winnerId}`).push().set({
+  await db.ref(`users/${winnerId}/transactions/WIN_${roomId}`).set({
     type: "MATCH_WINNINGS",
     roomId: roomId,
     amount: winnerPrize,
     platformFee: platformFee,
     status: "SUCCESS",
-    timestamp: admin.database.ServerValue.TIMESTAMP
+    createdAt: admin.database.ServerValue.TIMESTAMP
   });
 
   return {
@@ -245,47 +458,4 @@ exports.settleMatch = functions.https.onCall(async (data, context) => {
     platformFee: platformFee,
     winnerPrize: winnerPrize
   };
-});
-
-/**
- * Process Withdrawal Request
- * Owner admin authorization or automated payout dispatch.
- */
-exports.requestWithdrawal = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
-  }
-
-  const userId = context.auth.uid;
-  const withdrawAmount = Number(data.amount);
-  const bankDetails = data.bankDetails;
-
-  if (isNaN(withdrawAmount) || withdrawAmount < 1000) {
-    throw new functions.https.HttpsError("invalid-argument", "Minimum withdrawal is ₦1,000.");
-  }
-
-  // Deduct balance atomically
-  const userRef = db.ref(`users/${userId}/cashBalance`);
-  const result = await userRef.transaction((current) => {
-    if ((current || 0) < withdrawAmount) {
-      return; // Insufficient funds
-    }
-    return current - withdrawAmount;
-  });
-
-  if (!result.committed) {
-    throw new functions.https.HttpsError("failed-precondition", "Insufficient funds.");
-  }
-
-  // Create pending withdrawal request for admin review
-  const reqRef = db.ref("pendingWithdrawals").push();
-  await reqRef.set({
-    userId: userId,
-    amount: withdrawAmount,
-    bankDetails: bankDetails,
-    status: "PENDING_REVIEW",
-    timestamp: admin.database.ServerValue.TIMESTAMP
-  });
-
-  return { success: true, message: "Withdrawal request submitted for review." };
 });
