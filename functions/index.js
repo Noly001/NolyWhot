@@ -1,7 +1,8 @@
 /**
  * NolyWhot Server-Side Real-Money Gaming, Automated Paystack Deposits & Payout Cloud Functions
- * Supports Server-to-Server Paystack Verification, Automatic Bank Withdrawals, HMAC SHA512 Webhooks,
- * Idempotency Protection, Atomic Wallet Balances, Escrow Locking, and Match Settlement.
+ * Supports Server-to-Server Paystack Transaction Initialization, Server Verification,
+ * Automatic Bank Withdrawals, HMAC SHA512 Webhooks, Idempotency Protection,
+ * Atomic Wallet Balances, Escrow Locking, and Match Settlement.
  */
 
 const functions = require("firebase-functions");
@@ -12,8 +13,31 @@ const https = require("https");
 admin.initializeApp();
 const db = admin.database();
 
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || "sk_test_nolywhot_secret_key";
-const FLUTTERWAVE_SECRET_HASH = process.env.FLUTTERWAVE_SECRET_HASH || "nolywhot_flutterwave_hash";
+// Retrieve secrets securely from environment or functions.config()
+const PAYSTACK_SECRET_KEY =
+  process.env.PAYSTACK_SECRET_KEY ||
+  (functions.config && functions.config().paystack ? functions.config().paystack.secret_key : null) ||
+  "";
+
+const PAYSTACK_PUBLIC_KEY =
+  process.env.PAYSTACK_PUBLIC_KEY ||
+  (functions.config && functions.config().paystack ? functions.config().paystack.public_key : null) ||
+  "";
+
+const FLUTTERWAVE_SECRET_HASH =
+  process.env.FLUTTERWAVE_SECRET_HASH ||
+  (functions.config && functions.config().flutterwave ? functions.config().flutterwave.secret_hash : null) ||
+  "";
+
+/**
+ * Public Config Callable for Frontend Integration
+ */
+exports.getPaystackConfig = functions.https.onCall(async (data, context) => {
+  return {
+    publicKey: PAYSTACK_PUBLIC_KEY
+  };
+});
+
 const PLATFORM_FEE_PERCENT = 0.10; // 10% Platform fee
 
 /**
@@ -21,6 +45,10 @@ const PLATFORM_FEE_PERCENT = 0.10; // 10% Platform fee
  */
 function makePaystackRequest(path, method, data = null) {
   return new Promise((resolve, reject) => {
+    if (!PAYSTACK_SECRET_KEY) {
+      return reject(new Error("Paystack secret key is not configured in Cloud Functions."));
+    }
+
     const options = {
       hostname: "api.paystack.co",
       port: 443,
@@ -54,6 +82,81 @@ function makePaystackRequest(path, method, data = null) {
 }
 
 /**
+ * Server-Side Paystack Transaction Initialization
+ * Calls Paystack API: POST /transaction/initialize
+ * Enforces amount, currency (NGN), and customer email on the server.
+ * Returns authorization_url, access_code, and reference.
+ */
+exports.initializePaystackTransaction = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
+  }
+
+  const userId = context.auth.uid;
+  const userEmail = (context.auth.token && context.auth.token.email) || data.email;
+  const amount = Number(data.amount);
+
+  if (isNaN(amount) || amount < 100) {
+    throw new functions.https.HttpsError("invalid-argument", "Minimum deposit amount is ₦100.");
+  }
+
+  if (!userEmail) {
+    throw new functions.https.HttpsError("invalid-argument", "Customer email is required.");
+  }
+
+  if (!PAYSTACK_SECRET_KEY) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Paystack secret key is not configured in Firebase Cloud Functions environment. Please configure PAYSTACK_SECRET_KEY."
+    );
+  }
+
+  const reference = `DEP_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+
+  try {
+    const paystackRes = await makePaystackRequest("/transaction/initialize", "POST", {
+      email: userEmail,
+      amount: Math.round(amount * 100), // convert to kobo
+      currency: "NGN",
+      reference: reference,
+      metadata: {
+        userId: userId,
+        custom_fields: [
+          { display_name: "User ID", variable_name: "userId", value: userId }
+        ]
+      }
+    });
+
+    if (!paystackRes || !paystackRes.status || !paystackRes.data) {
+      throw new Error(paystackRes.message || "Failed to initialize transaction with Paystack.");
+    }
+
+    // Save initial transaction record as PENDING
+    await db.ref(`users/${userId}/transactions/${reference}`).set({
+      type: "DEPOSIT",
+      amount: amount,
+      currency: "NGN",
+      gateway: "PAYSTACK",
+      status: "PENDING",
+      reference: reference,
+      createdAt: admin.database.ServerValue.TIMESTAMP
+    });
+
+    return {
+      success: true,
+      authorization_url: paystackRes.data.authorization_url,
+      access_code: paystackRes.data.access_code,
+      reference: reference,
+      publicKey: PAYSTACK_PUBLIC_KEY
+    };
+
+  } catch (error) {
+    console.error("Paystack Initialize Error:", error);
+    throw new functions.https.HttpsError("internal", error.message || "Could not initialize transaction.");
+  }
+});
+
+/**
  * Server-Side Verification Callable Function for Paystack Deposits
  * Client sends reference. Server queries Paystack API, verifies amount, currency, and status,
  * and atomically credits user's cash balance if valid.
@@ -68,6 +171,13 @@ exports.verifyPaystackDeposit = functions.https.onCall(async (data, context) => 
 
   if (!reference) {
     throw new functions.https.HttpsError("invalid-argument", "Transaction reference is required.");
+  }
+
+  if (!PAYSTACK_SECRET_KEY) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Paystack secret key is not configured in Firebase Cloud Functions environment."
+    );
   }
 
   // 1. Idempotency Check
@@ -98,7 +208,6 @@ exports.verifyPaystackDeposit = functions.https.onCall(async (data, context) => 
 
   // 3. Verify Payment Criteria
   if (txData.status !== "success") {
-    // Record failed attempt
     await db.ref(`users/${userId}/transactions/${reference}`).set({
       type: "DEPOSIT",
       amount: txData.amount ? txData.amount / 100 : 0,
@@ -112,6 +221,10 @@ exports.verifyPaystackDeposit = functions.https.onCall(async (data, context) => 
 
   if (txData.currency !== "NGN") {
     throw new functions.https.HttpsError("failed-precondition", "Invalid transaction currency.");
+  }
+
+  if (txData.metadata && txData.metadata.userId && txData.metadata.userId !== userId) {
+    throw new functions.https.HttpsError("permission-denied", "Transaction does not belong to authenticated user.");
   }
 
   const creditedAmount = txData.amount / 100; // Convert kobo to Naira
@@ -155,6 +268,10 @@ exports.paystackWebhook = functions.https.onRequest(async (req, res) => {
     const signature = req.headers["x-paystack-signature"];
     if (!signature) {
       return res.status(401).send("Missing Paystack signature.");
+    }
+
+    if (!PAYSTACK_SECRET_KEY) {
+      return res.status(500).send("Paystack secret key is not configured.");
     }
 
     const hash = crypto
@@ -258,6 +375,7 @@ exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context
   const accountNumber = data.accountNumber ? String(data.accountNumber).trim() : "";
   const bankCode = data.bankCode ? String(data.bankCode).trim() : "";
   const accountName = data.accountName ? String(data.accountName).trim() : "NolyWhot Player";
+  const bankName = data.bankName ? String(data.bankName).trim() : "";
 
   if (isNaN(amount) || amount < 500) {
     throw new functions.https.HttpsError("invalid-argument", "Minimum withdrawal amount is ₦500.");
@@ -268,7 +386,18 @@ exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context
   }
 
   if (!bankCode) {
-    throw new functions.https.HttpsError("invalid-argument", "Bank code is required.");
+    throw new functions.https.HttpsError("invalid-argument", "Bank selection is required.");
+  }
+
+  if (!accountName || accountName.length < 3) {
+    throw new functions.https.HttpsError("invalid-argument", "Account holder name is required.");
+  }
+
+  if (!PAYSTACK_SECRET_KEY) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Paystack secret key is not configured in Firebase Cloud Functions environment."
+    );
   }
 
   // 1. Reserve / Deduct Balance Atomically to Prevent Double Spending
@@ -291,7 +420,9 @@ exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context
     userId: userId,
     amount: amount,
     accountNumber: accountNumber,
+    accountName: accountName,
     bankCode: bankCode,
+    bankName: bankName,
     status: "PROCESSING",
     createdAt: admin.database.ServerValue.TIMESTAMP
   });
@@ -300,6 +431,8 @@ exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context
     type: "WITHDRAWAL",
     amount: amount,
     accountNumber: accountNumber,
+    accountName: accountName,
+    bankName: bankName,
     status: "PROCESSING",
     reference: txId,
     createdAt: admin.database.ServerValue.TIMESTAMP
@@ -307,10 +440,24 @@ exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context
 
   // 2. Initiate Paystack Automated Payout
   try {
+    // Optional: Account validation with Paystack
+    let recipientName = accountName;
+    try {
+      const resolveRes = await makePaystackRequest(
+        `/bank/resolve?account_number=${encodeURIComponent(accountNumber)}&bank_code=${encodeURIComponent(bankCode)}`,
+        "GET"
+      );
+      if (resolveRes && resolveRes.status && resolveRes.data && resolveRes.data.account_name) {
+        recipientName = resolveRes.data.account_name;
+      }
+    } catch (resolveErr) {
+      console.warn("Bank resolve notice:", resolveErr.message);
+    }
+
     // Step A: Create Transfer Recipient
     const recipientRes = await makePaystackRequest("/transferrecipient", "POST", {
       type: "nuban",
-      name: accountName,
+      name: recipientName,
       account_number: accountNumber,
       bank_code: bankCode,
       currency: "NGN"

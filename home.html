@@ -114,7 +114,7 @@
 
         <div class="wallet-tab-content" id="wtab-withdraw">
             <h4>💸 Withdraw Earnings to Bank Account</h4>
-            <p class="wdesc">Direct transfer to any Nigerian bank account (CBN/BVN verified).</p>
+            <p class="wdesc">Direct transfer to any verified Nigerian bank account (NUBAN verified).</p>
             <div class="form-group">
                 <label>Withdrawal Amount (NGN):</label>
                 <input type="number" id="withdrawAmount" placeholder="e.g. 1000" min="500">
@@ -122,18 +122,24 @@
             <div class="form-group">
                 <label>Select Bank:</label>
                 <select id="bankName">
-                    <option value="gtb">Guaranty Trust Bank (GTBank)</option>
-                    <option value="access">Access Bank</option>
-                    <option value="firstbank">First Bank of Nigeria</option>
-                    <option value="zenith">Zenith Bank</option>
-                    <option value="opay">OPay Digital Services</option>
-                    <option value="palmpay">PalmPay</option>
-                    <option value="kuda">Kuda Microfinance Bank</option>
+                    <option value="058">Guaranty Trust Bank (GTBank)</option>
+                    <option value="044">Access Bank</option>
+                    <option value="011">First Bank of Nigeria</option>
+                    <option value="057">Zenith Bank</option>
+                    <option value="999992">OPay Digital Services</option>
+                    <option value="999991">PalmPay</option>
+                    <option value="50211">Kuda Microfinance Bank</option>
+                    <option value="033">United Bank for Africa (UBA)</option>
+                    <option value="035">Wema Bank (ALAT)</option>
                 </select>
             </div>
             <div class="form-group">
                 <label>Account Number (10 digits):</label>
                 <input type="text" id="accountNumber" placeholder="0123456789" maxlength="10">
+            </div>
+            <div class="form-group">
+                <label>Account Holder Full Name:</label>
+                <input type="text" id="accountName" placeholder="Full name registered on bank account">
             </div>
             <button id="btnProcessWithdraw" class="action-btn-green">SUBMIT WITHDRAWAL REQUEST</button>
             <div id="withdrawMsg" class="wmsg"></div>
@@ -162,6 +168,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 import { getDatabase, ref, get, set, push, onValue } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-functions.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyAI6i5KtbiXbI1nbq3FejALTKCQ1EADvP8",
@@ -177,12 +184,14 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const database = getDatabase(app);
+const functions = getFunctions(app);
 
 let currentUserId = null;
 let currentWalletData = {
     cashBalance: 0,
     demoBalance: 10000
 };
+let paystackPublicKey = null;
 
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
@@ -191,6 +200,17 @@ onAuthStateChanged(auth, async (user) => {
     }
 
     currentUserId = user.uid;
+
+    // Fetch Paystack Public Configuration from Cloud Functions
+    try {
+        const getConfig = httpsCallable(functions, "getPaystackConfig");
+        const cfg = await getConfig();
+        if (cfg && cfg.data && cfg.data.publicKey) {
+            paystackPublicKey = cfg.data.publicKey;
+        }
+    } catch (e) {
+        console.warn("Paystack config fetch note:", e.message);
+    }
 
     try {
         const userRef = ref(database, "users/" + user.uid);
@@ -298,10 +318,23 @@ wtabBtns.forEach(btn => {
     });
 });
 
+const depositProviderSelect = document.getElementById("depositProvider");
+
+// Check URL for Paystack payment return reference
+window.addEventListener("DOMContentLoaded", () => {
+    const params = new URLSearchParams(window.location.search);
+    const returnRef = params.get("reference") || params.get("trxref");
+    if (returnRef) {
+        walletModal.classList.remove("hidden");
+        document.querySelector('[data-wtab="wtab-deposit"]').click();
+        verifyDepositOnServer(returnRef);
+    }
+});
+
 // DEPOSIT PROCESS
 document.getElementById("btnProcessDeposit").addEventListener("click", async () => {
     const amount = Number(document.getElementById("depositAmount").value);
-    const provider = document.getElementById("depositProvider").value;
+    const provider = depositProviderSelect.value;
     const msg = document.getElementById("depositMsg");
 
     if (!amount || amount < 100) {
@@ -315,14 +348,6 @@ document.getElementById("btnProcessDeposit").addEventListener("click", async () 
             const newDemo = (currentWalletData.demoBalance || 10000) + amount;
             await set(ref(database, "users/" + currentUserId + "/wallet/demoBalance"), newDemo);
 
-            const txRef = push(ref(database, "users/" + currentUserId + "/transactions"));
-            await set(txRef, {
-                type: "DEMO_DEPOSIT",
-                amount: amount,
-                status: "completed",
-                createdAt: Date.now()
-            });
-
             msg.textContent = "✅ Demo PTS Deposit of " + amount.toLocaleString() + " PTS successful!";
             msg.style.color = "#2ecc71";
             document.getElementById("depositAmount").value = "";
@@ -331,58 +356,78 @@ document.getElementById("btnProcessDeposit").addEventListener("click", async () 
             msg.textContent = "⚠️ Demo balance updated locally.";
             msg.style.color = "#2ecc71";
         }
-    } else {
-        const reference = "PAYSTACK_DEP_" + Date.now() + "_" + Math.floor(Math.random() * 10000);
-        msg.textContent = "🔒 Initiating Paystack Gateway Deposit (Ref: " + reference + ")...";
+    } else if (provider === "paystack") {
+        msg.textContent = "🔒 Calling server to initialize secure Paystack transaction...";
         msg.style.color = "#f1c40f";
 
-        // Paystack Inline SDK Initialization
-        if (window.PaystackPop && typeof window.PaystackPop.setup === "function") {
-            const handler = PaystackPop.setup({
-                key: "pk_test_nolywhot_public_key",
-                email: auth.currentUser ? auth.currentUser.email : "player@nolywhot.com",
-                amount: amount * 100, // kobo
-                currency: "NGN",
-                ref: reference,
-                callback: function(response) {
-                    msg.textContent = "⏳ Verifying transaction with Paystack server...";
-                    msg.style.color = "#f1c40f";
-
-                    // Call Server Verification
-                    verifyDepositOnServer(response.reference || reference, amount);
-                },
-                onClose: function() {
-                    msg.textContent = "⚠️ Deposit transaction cancelled by user.";
-                    msg.style.color = "#ff6b6b";
-                }
+        try {
+            // Call server-side initialization Cloud Function
+            const initDeposit = httpsCallable(functions, "initializePaystackTransaction");
+            const res = await initDeposit({
+                amount: amount,
+                email: (auth.currentUser && auth.currentUser.email) ? auth.currentUser.email : "player@nolywhot.com"
             });
-            handler.openIframe();
-        } else {
-            // Direct Server Verification Call
-            verifyDepositOnServer(reference, amount);
+
+            if (res.data && res.data.authorization_url) {
+                msg.textContent = "✅ Transaction initialized! Redirecting to Paystack secure checkout...";
+                msg.style.color = "#2ecc71";
+
+                const activeKey = res.data.publicKey || paystackPublicKey;
+
+                if (window.PaystackPop && res.data.access_code && activeKey && activeKey.startsWith("pk_")) {
+                    const handler = PaystackPop.setup({
+                        key: activeKey,
+                        email: auth.currentUser ? auth.currentUser.email : "player@nolywhot.com",
+                        amount: Math.round(amount * 100),
+                        currency: "NGN",
+                        ref: res.data.reference,
+                        callback: function(response) {
+                            msg.textContent = "⏳ Payment received! Verifying on server...";
+                            verifyDepositOnServer(response.reference || res.data.reference);
+                        },
+                        onClose: function() {
+                            msg.textContent = "⚠️ Paystack checkout window closed.";
+                        }
+                    });
+                    handler.openIframe();
+                } else {
+                    // Standard secure hosted Paystack checkout page
+                    window.location.href = res.data.authorization_url;
+                }
+            } else {
+                throw new Error("Invalid initialization response from server.");
+            }
+        } catch (err) {
+            console.error("Paystack Initialization Error:", err);
+            msg.innerHTML = `⚠️ <strong>Payment Gateway Notice:</strong> ${err.message || "Could not connect to Paystack Cloud Function"}.<br><small>To enable real-money deposits, ensure PAYSTACK_SECRET_KEY is configured in Firebase Cloud Functions secrets. You can test immediately using 'Demo Instant Deposit'.</small>`;
+            msg.style.color = "#f1c40f";
         }
+    } else {
+        msg.textContent = "⚠️ " + provider.toUpperCase() + " Gateway requires server credentials.";
+        msg.style.color = "#f1c40f";
     }
 });
 
-async function verifyDepositOnServer(reference, expectedAmount) {
+async function verifyDepositOnServer(reference) {
     const msg = document.getElementById("depositMsg");
-    try {
-        // Record pending transaction status
-        const txRef = ref(database, "users/" + currentUserId + "/transactions/" + reference);
-        await set(txRef, {
-            type: "REAL_DEPOSIT",
-            amount: expectedAmount,
-            gateway: "PAYSTACK",
-            status: "pending_verification",
-            reference: reference,
-            createdAt: Date.now()
-        });
+    msg.textContent = "⌛ Verifying transaction with Paystack server (Ref: " + reference + ")...";
+    msg.style.color = "#f1c40f";
 
-        msg.textContent = "⌛ Payment submitted. Server verification in progress (Ref: " + reference + ")...";
-        msg.style.color = "#f1c40f";
+    try {
+        const verifyCall = httpsCallable(functions, "verifyPaystackDeposit");
+        const res = await verifyCall({ reference: reference });
+
+        if (res.data && res.data.success) {
+            msg.innerHTML = `✅ <strong>Deposit Confirmed!</strong> Credited ₦${res.data.amount ? res.data.amount.toLocaleString() : ""} to your cash wallet.`;
+            msg.style.color = "#2ecc71";
+            document.getElementById("depositAmount").value = "";
+        } else {
+            msg.textContent = "⚠️ " + (res.data ? res.data.message : "Verification pending server webhook.");
+            msg.style.color = "#f1c40f";
+        }
     } catch (err) {
         console.error("Server Deposit Verification Error:", err);
-        msg.textContent = "⚠️ Deposit logged for server webhook verification.";
+        msg.textContent = "⚠️ Server verification status: " + (err.message || "Pending webhook confirmation.");
         msg.style.color = "#f1c40f";
     }
 }
@@ -391,7 +436,9 @@ async function verifyDepositOnServer(reference, expectedAmount) {
 document.getElementById("btnProcessWithdraw").addEventListener("click", async () => {
     const amount = Number(document.getElementById("withdrawAmount").value);
     const acc = document.getElementById("accountNumber").value.trim();
+    const accountName = document.getElementById("accountName").value.trim();
     const bankSelect = document.getElementById("bankName");
+    const bankCode = bankSelect.value;
     const bankNameText = bankSelect.options[bankSelect.selectedIndex].text;
     const msg = document.getElementById("withdrawMsg");
 
@@ -407,38 +454,46 @@ document.getElementById("btnProcessWithdraw").addEventListener("click", async ()
         return;
     }
 
+    if (!accountName || accountName.length < 3) {
+        msg.textContent = "Please enter the verified Account Holder Full Name.";
+        msg.style.color = "#ff6b6b";
+        return;
+    }
+
     if (amount > (currentWalletData.cashBalance || 0)) {
         msg.textContent = "Insufficient cash balance for this withdrawal.";
         msg.style.color = "#ff6b6b";
         return;
     }
 
-    msg.textContent = "⏳ Processing automated bank withdrawal request...";
+    msg.textContent = "⏳ Submitting automated bank payout request via Paystack Transfers API...";
     msg.style.color = "#f1c40f";
 
     try {
-        const txId = "WD_" + Date.now() + "_" + Math.floor(Math.random() * 10000);
-
-        // Reserve withdrawal record
-        const txRef = ref(database, "users/" + currentUserId + "/transactions/" + txId);
-        await set(txRef, {
-            type: "WITHDRAWAL",
+        // Execute server-side automated payout Cloud Function
+        const withdrawCall = httpsCallable(functions, "processAutomatedWithdrawal");
+        const res = await withdrawCall({
             amount: amount,
             accountNumber: acc,
-            bankName: bankNameText,
-            status: "processing",
-            reference: txId,
-            createdAt: Date.now()
+            accountName: accountName,
+            bankCode: bankCode,
+            bankName: bankNameText
         });
 
-        msg.textContent = "✅ Automated withdrawal of ₦" + amount.toLocaleString() + " submitted to " + bankNameText + " (" + acc + "). Funds reserved.";
-        msg.style.color = "#2ecc71";
+        if (res.data && res.data.success) {
+            msg.innerHTML = `✅ <strong>Payout Initiated!</strong> ₦${amount.toLocaleString()} sent to ${bankNameText} (${acc} - ${accountName}).<br><small>Reference: ${res.data.reference || "N/A"}</small>`;
+            msg.style.color = "#2ecc71";
 
-        document.getElementById("withdrawAmount").value = "";
-        document.getElementById("accountNumber").value = "";
+            document.getElementById("withdrawAmount").value = "";
+            document.getElementById("accountNumber").value = "";
+            document.getElementById("accountName").value = "";
+        } else {
+            msg.textContent = "⚠️ " + (res.data ? res.data.message : "Payout submitted.");
+            msg.style.color = "#f1c40f";
+        }
     } catch (err) {
         console.error("Automated Withdrawal Processing Error:", err);
-        msg.textContent = "⚠️ Could not initiate automated transfer. Please try again.";
+        msg.innerHTML = `❌ <strong>Withdrawal Error:</strong> ${err.message || "Could not process transfer"}.`;
         msg.style.color = "#ff6b6b";
     }
 });
