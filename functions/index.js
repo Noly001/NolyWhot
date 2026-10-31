@@ -1,8 +1,8 @@
 /**
  * NolyWhot Server-Side Real-Money Gaming, Automated Paystack Deposits & Payout Cloud Functions
  * Supports Server-to-Server Paystack Transaction Initialization, Server Verification,
- * Automatic Bank Withdrawals, HMAC SHA512 Webhooks, Idempotency Protection,
- * Atomic Wallet Balances, Escrow Locking, and Match Settlement.
+ * Mandatory Bank Account Resolution, Automated Payouts, HMAC SHA512 Webhooks,
+ * Idempotency Protection, Atomic Wallet Balances, Escrow Locking, and Match Settlement.
  */
 
 const functions = require("firebase-functions");
@@ -29,6 +29,8 @@ const FLUTTERWAVE_SECRET_HASH =
   (functions.config && functions.config().flutterwave ? functions.config().flutterwave.secret_hash : null) ||
   "";
 
+const PLATFORM_FEE_PERCENT = 0.10; // 10% Platform fee
+
 /**
  * Public Config Callable for Frontend Integration
  */
@@ -37,8 +39,6 @@ exports.getPaystackConfig = functions.https.onCall(async (data, context) => {
     publicKey: PAYSTACK_PUBLIC_KEY
   };
 });
-
-const PLATFORM_FEE_PERCENT = 0.10; // 10% Platform fee
 
 /**
  * Helper function: Perform HTTPS Request to Paystack REST API
@@ -85,7 +85,7 @@ function makePaystackRequest(path, method, data = null) {
  * Server-Side Paystack Transaction Initialization
  * Calls Paystack API: POST /transaction/initialize
  * Enforces amount, currency (NGN), and customer email on the server.
- * Returns authorization_url, access_code, and reference.
+ * Creates matching pending transaction record.
  */
 exports.initializePaystackTransaction = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -131,7 +131,16 @@ exports.initializePaystackTransaction = functions.https.onCall(async (data, cont
       throw new Error(paystackRes.message || "Failed to initialize transaction with Paystack.");
     }
 
-    // Save initial transaction record as PENDING
+    // Save matching pending transaction record for server verification
+    await db.ref(`pendingDeposits/${reference}`).set({
+      userId: userId,
+      userEmail: userEmail,
+      amount: amount,
+      currency: "NGN",
+      status: "PENDING",
+      createdAt: admin.database.ServerValue.TIMESTAMP
+    });
+
     await db.ref(`users/${userId}/transactions/${reference}`).set({
       type: "DEPOSIT",
       amount: amount,
@@ -158,8 +167,14 @@ exports.initializePaystackTransaction = functions.https.onCall(async (data, cont
 
 /**
  * Server-Side Verification Callable Function for Paystack Deposits
- * Client sends reference. Server queries Paystack API, verifies amount, currency, and status,
- * and atomically credits user's cash balance if valid.
+ * Requires:
+ * 1. Authenticated user
+ * 2. Matching pending transaction record
+ * 3. Matching user ID
+ * 4. Correct NGN currency
+ * 5. Exact expected amount
+ * 6. Successful Paystack verification status
+ * Atomic & Idempotent: credits user's cash balance exactly once.
  */
 exports.verifyPaystackDeposit = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -180,23 +195,24 @@ exports.verifyPaystackDeposit = functions.https.onCall(async (data, context) => 
     );
   }
 
-  // 1. Idempotency Check
-  const refCheck = await db.ref(`processedTransactions/${reference}`).once("value");
-  if (refCheck.exists()) {
-    const existing = refCheck.val();
-    return {
-      success: true,
-      message: "Transaction already processed and credited.",
-      amount: existing.amount
-    };
+  // 1. Verify matching pending transaction exists
+  const pendingSnap = await db.ref(`pendingDeposits/${reference}`).once("value");
+  if (!pendingSnap.exists()) {
+    throw new functions.https.HttpsError("not-found", "No matching pending deposit transaction found.");
+  }
+  const pendingTx = pendingSnap.val();
+
+  // 2. Verify matching user ID
+  if (pendingTx.userId !== userId) {
+    throw new functions.https.HttpsError("permission-denied", "Transaction does not belong to authenticated user.");
   }
 
-  // 2. Query Paystack Verification Endpoint (Server-to-Server)
+  // 3. Query Paystack Verification Endpoint (Server-to-Server)
   let paystackRes;
   try {
     paystackRes = await makePaystackRequest(`/transaction/verify/${encodeURIComponent(reference)}`, "GET");
   } catch (err) {
-    console.error("Paystack API Request Failed:", err);
+    console.error("Paystack API Verification Request Failed:", err);
     throw new functions.https.HttpsError("internal", "Could not verify payment with gateway.");
   }
 
@@ -206,35 +222,55 @@ exports.verifyPaystackDeposit = functions.https.onCall(async (data, context) => 
 
   const txData = paystackRes.data;
 
-  // 3. Verify Payment Criteria
+  // 4. Verify successful Paystack status
   if (txData.status !== "success") {
-    await db.ref(`users/${userId}/transactions/${reference}`).set({
-      type: "DEPOSIT",
-      amount: txData.amount ? txData.amount / 100 : 0,
-      currency: txData.currency || "NGN",
-      status: "FAILED",
-      reference: reference,
-      createdAt: admin.database.ServerValue.TIMESTAMP
-    });
+    await db.ref(`pendingDeposits/${reference}/status`).set("FAILED");
+    await db.ref(`users/${userId}/transactions/${reference}/status`).set("FAILED");
     throw new functions.https.HttpsError("failed-precondition", `Payment status is ${txData.status}. Deposit not credited.`);
   }
 
-  if (txData.currency !== "NGN") {
-    throw new functions.https.HttpsError("failed-precondition", "Invalid transaction currency.");
+  // 5. Verify correct NGN currency
+  if (txData.currency !== "NGN" || pendingTx.currency !== "NGN") {
+    throw new functions.https.HttpsError("failed-precondition", "Invalid transaction currency. Expected NGN.");
   }
 
-  if (txData.metadata && txData.metadata.userId && txData.metadata.userId !== userId) {
-    throw new functions.https.HttpsError("permission-denied", "Transaction does not belong to authenticated user.");
-  }
-
+  // 6. Verify exact expected amount
   const creditedAmount = txData.amount / 100; // Convert kobo to Naira
+  if (creditedAmount !== pendingTx.amount) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      `Transaction amount mismatch: received ₦${creditedAmount}, expected ₦${pendingTx.amount}.`
+    );
+  }
 
-  // 4. Atomic Balance Update in Realtime Database
+  // 7. Verify metadata user ID matches
+  if (txData.metadata && txData.metadata.userId && txData.metadata.userId !== userId) {
+    throw new functions.https.HttpsError("permission-denied", "Paystack metadata user ID does not match authenticated user.");
+  }
+
+  // 8. Atomic & Idempotent Crediting via status transition from PENDING -> SUCCESS
+  const statusRef = db.ref(`pendingDeposits/${reference}/status`);
+  const statusTx = await statusRef.transaction((currentStatus) => {
+    if (currentStatus === "SUCCESS") {
+      return; // Already processed and credited, abort transaction
+    }
+    return "SUCCESS";
+  });
+
+  if (!statusTx.committed) {
+    return {
+      success: true,
+      message: "Transaction already verified and credited.",
+      amount: creditedAmount
+    };
+  }
+
+  // Credit balance atomically
   await db.ref(`users/${userId}/wallet/cashBalance`).transaction((current) => {
     return (current || 0) + creditedAmount;
   });
 
-  // 5. Save Idempotency & Transaction Ledger Record
+  // Record completed transactions
   await db.ref(`processedTransactions/${reference}`).set({
     userId: userId,
     amount: creditedAmount,
@@ -249,7 +285,7 @@ exports.verifyPaystackDeposit = functions.https.onCall(async (data, context) => 
     gateway: "PAYSTACK",
     status: "SUCCESS",
     reference: reference,
-    createdAt: admin.database.ServerValue.TIMESTAMP
+    updatedAt: admin.database.ServerValue.TIMESTAMP
   });
 
   return {
@@ -261,7 +297,7 @@ exports.verifyPaystackDeposit = functions.https.onCall(async (data, context) => 
 
 /**
  * Paystack Webhook Handler
- * Processes async charge and transfer notifications with HMAC SHA512 signature validation.
+ * Validates HMAC SHA512 signature and processes events idempotently.
  */
 exports.paystackWebhook = functions.https.onRequest(async (req, res) => {
   try {
@@ -288,14 +324,31 @@ exports.paystackWebhook = functions.https.onRequest(async (req, res) => {
     const eventType = event.event;
     const data = event.data;
 
+    // Event Idempotency Check
+    const eventKey = `${eventType}_${data.id || data.reference || data.transfer_code}`;
+    const eventRef = db.ref(`processedWebhookEvents/${eventKey}`);
+    const eventTx = await eventRef.transaction((current) => {
+      if (current) return; // already processed
+      return true;
+    });
+
+    if (!eventTx.committed) {
+      return res.status(200).send("Webhook event already processed.");
+    }
+
     // A. DEPOSIT SUCCESS WEBHOOK
     if (eventType === "charge.success") {
       const reference = data.reference;
       const amount = data.amount / 100; // kobo to Naira
       const userEmail = data.customer ? data.customer.email : null;
 
-      const refCheck = await db.ref(`processedTransactions/${reference}`).once("value");
-      if (!refCheck.exists() && userEmail) {
+      const statusRef = db.ref(`pendingDeposits/${reference}/status`);
+      const statusTx = await statusRef.transaction((current) => {
+        if (current === "SUCCESS") return;
+        return "SUCCESS";
+      });
+
+      if (statusTx.committed && userEmail) {
         const usersSnap = await db.ref("users").orderByChild("email").equalTo(userEmail).once("value");
         if (usersSnap.exists()) {
           const userId = Object.keys(usersSnap.val())[0];
@@ -335,20 +388,28 @@ exports.paystackWebhook = functions.https.onRequest(async (req, res) => {
       }
     }
 
-    // C. TRANSFER / WITHDRAWAL FAILED OR REVERSED WEBHOOK (AUTOMATIC REFUND)
+    // C. TRANSFER / WITHDRAWAL FAILED OR REVERSED WEBHOOK (EXACTLY-ONCE ATOMIC REFUND)
     else if (eventType === "transfer.failed" || eventType === "transfer.reversed") {
       const transferCode = data.transfer_code || data.reference;
       const txSnap = await db.ref(`pendingWithdrawals/${transferCode}`).once("value");
       if (txSnap.exists()) {
         const withdrawData = txSnap.val();
-        if (withdrawData.status !== "REFUNDED") {
-          // Refund reserved amount back to user's cash balance
+
+        // Atomic status transition ensures refund executes EXACTLY ONCE
+        const statusRef = db.ref(`pendingWithdrawals/${transferCode}/status`);
+        const refundTx = await statusRef.transaction((current) => {
+          if (current === "FAILED_REFUNDED") {
+            return; // Already refunded, do not double refund!
+          }
+          return "FAILED_REFUNDED";
+        });
+
+        if (refundTx.committed) {
           await db.ref(`users/${withdrawData.userId}/wallet/cashBalance`).transaction((current) => {
             return (current || 0) + withdrawData.amount;
           });
-
-          await db.ref(`pendingWithdrawals/${transferCode}/status`).set("REFUNDED");
           await db.ref(`users/${withdrawData.userId}/transactions/${transferCode}/status`).set("FAILED_REFUNDED");
+          await db.ref(`pendingWithdrawals/${transferCode}/refundedAt`).set(admin.database.ServerValue.TIMESTAMP);
         }
       }
     }
@@ -362,8 +423,12 @@ exports.paystackWebhook = functions.https.onRequest(async (req, res) => {
 
 /**
  * Automated Bank Withdrawal Function
- * Deducts/reserves user balance atomically, creates Paystack Transfer Recipient,
- * initiates Paystack Automated Transfer, and handles success or automatic refund.
+ * 1. Validates inputs
+ * 2. Mandatory bank account resolution (rejects withdrawal if unverified)
+ * 3. Atomic balance reservation
+ * 4. Paystack Transfer Recipient creation (using verifiedAccountName)
+ * 5. Paystack Transfer execution
+ * 6. Exactly-once atomic refund if transfer fails
  */
 exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -374,7 +439,6 @@ exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context
   const amount = Number(data.amount);
   const accountNumber = data.accountNumber ? String(data.accountNumber).trim() : "";
   const bankCode = data.bankCode ? String(data.bankCode).trim() : "";
-  const accountName = data.accountName ? String(data.accountName).trim() : "NolyWhot Player";
   const bankName = data.bankName ? String(data.bankName).trim() : "";
 
   if (isNaN(amount) || amount < 500) {
@@ -389,10 +453,6 @@ exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context
     throw new functions.https.HttpsError("invalid-argument", "Bank selection is required.");
   }
 
-  if (!accountName || accountName.length < 3) {
-    throw new functions.https.HttpsError("invalid-argument", "Account holder name is required.");
-  }
-
   if (!PAYSTACK_SECRET_KEY) {
     throw new functions.https.HttpsError(
       "failed-precondition",
@@ -400,11 +460,32 @@ exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context
     );
   }
 
-  // 1. Reserve / Deduct Balance Atomically to Prevent Double Spending
+  // 1. Mandatory Bank Account Resolution with Paystack API
+  let verifiedAccountName = "";
+  try {
+    const resolveRes = await makePaystackRequest(
+      `/bank/resolve?account_number=${encodeURIComponent(accountNumber)}&bank_code=${encodeURIComponent(bankCode)}`,
+      "GET"
+    );
+
+    if (!resolveRes || !resolveRes.status || !resolveRes.data || !resolveRes.data.account_name) {
+      throw new Error((resolveRes && resolveRes.message) || "Account details could not be resolved by the bank.");
+    }
+
+    verifiedAccountName = resolveRes.data.account_name;
+  } catch (resolveErr) {
+    console.error("Bank Account Resolution Failed:", resolveErr.message);
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      `Mandatory bank verification failed: ${resolveErr.message || "Account cannot be verified"}. Withdrawal rejected.`
+    );
+  }
+
+  // 2. Atomic Balance Reservation to Prevent Double Spending
   const balanceRef = db.ref(`users/${userId}/wallet/cashBalance`);
   const result = await balanceRef.transaction((currentBalance) => {
     if ((currentBalance || 0) < amount) {
-      return; // Abort if insufficient funds
+      return; // Insufficient funds, abort transaction
     }
     return currentBalance - amount;
   });
@@ -415,12 +496,12 @@ exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context
 
   const txId = `WD_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
 
-  // Log pending withdrawal
+  // Save pending withdrawal record
   await db.ref(`pendingWithdrawals/${txId}`).set({
     userId: userId,
     amount: amount,
     accountNumber: accountNumber,
-    accountName: accountName,
+    accountName: verifiedAccountName,
     bankCode: bankCode,
     bankName: bankName,
     status: "PROCESSING",
@@ -431,33 +512,19 @@ exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context
     type: "WITHDRAWAL",
     amount: amount,
     accountNumber: accountNumber,
-    accountName: accountName,
+    accountName: verifiedAccountName,
     bankName: bankName,
     status: "PROCESSING",
     reference: txId,
     createdAt: admin.database.ServerValue.TIMESTAMP
   });
 
-  // 2. Initiate Paystack Automated Payout
+  // 3. Initiate Paystack Automated Payout
   try {
-    // Optional: Account validation with Paystack
-    let recipientName = accountName;
-    try {
-      const resolveRes = await makePaystackRequest(
-        `/bank/resolve?account_number=${encodeURIComponent(accountNumber)}&bank_code=${encodeURIComponent(bankCode)}`,
-        "GET"
-      );
-      if (resolveRes && resolveRes.status && resolveRes.data && resolveRes.data.account_name) {
-        recipientName = resolveRes.data.account_name;
-      }
-    } catch (resolveErr) {
-      console.warn("Bank resolve notice:", resolveErr.message);
-    }
-
-    // Step A: Create Transfer Recipient
+    // Create Transfer Recipient with verified account holder name
     const recipientRes = await makePaystackRequest("/transferrecipient", "POST", {
       type: "nuban",
-      name: recipientName,
+      name: verifiedAccountName,
       account_number: accountNumber,
       bank_code: bankCode,
       currency: "NGN"
@@ -469,10 +536,10 @@ exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context
 
     const recipientCode = recipientRes.data.recipient_code;
 
-    // Step B: Initiate Transfer
+    // Initiate Transfer
     const transferRes = await makePaystackRequest("/transfer", "POST", {
       source: "balance",
-      amount: amount * 100, // Convert Naira to kobo
+      amount: Math.round(amount * 100), // Convert Naira to kobo
       recipient: recipientCode,
       reason: "NolyWhot Wallet Withdrawal",
       reference: txId
@@ -490,26 +557,37 @@ exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context
 
       return {
         success: true,
-        message: `Automated withdrawal of ₦${amount.toLocaleString()} initiated successfully.`,
+        message: `Automated withdrawal of ₦${amount.toLocaleString()} initiated to ${verifiedAccountName}.`,
         reference: txId,
+        accountName: verifiedAccountName,
         status: transferStatus
       };
     } else {
-      throw new Error(`Transfer status: ${transferStatus}`);
+      throw new Error(`Transfer rejected with status: ${transferStatus}`);
     }
 
   } catch (error) {
-    console.error("Automated Withdrawal Error:", error);
+    console.error("Automated Withdrawal Transfer Execution Error:", error);
 
-    // RESTORE RESERVED BALANCE AUTOMATICALLY ON FAILURE
-    await balanceRef.transaction((current) => {
-      return (current || 0) + amount;
+    // EXACTLY-ONCE ATOMIC REFUND ON FAILURE
+    const statusRef = db.ref(`pendingWithdrawals/${txId}/status`);
+    const refundTx = await statusRef.transaction((current) => {
+      if (current === "FAILED_REFUNDED") return;
+      return "FAILED_REFUNDED";
     });
 
-    await db.ref(`pendingWithdrawals/${txId}/status`).set("FAILED_REFUNDED");
-    await db.ref(`users/${userId}/transactions/${txId}/status`).set("FAILED_REFUNDED");
+    if (refundTx.committed) {
+      await balanceRef.transaction((current) => {
+        return (current || 0) + amount;
+      });
+      await db.ref(`users/${userId}/transactions/${txId}/status`).set("FAILED_REFUNDED");
+      await db.ref(`pendingWithdrawals/${txId}/refundedAt`).set(admin.database.ServerValue.TIMESTAMP);
+    }
 
-    throw new functions.https.HttpsError("internal", `Withdrawal failed: ${error.message || "Could not process transfer"}. Funds have been restored to your wallet.`);
+    throw new functions.https.HttpsError(
+      "internal",
+      `Withdrawal failed: ${error.message || "Transfer could not be processed"}. Reserved funds have been restored to your wallet.`
+    );
   }
 });
 
