@@ -1,8 +1,8 @@
 /**
  * NolyWhot Server-Side Real-Money Gaming, Automated Paystack Deposits & Payout Cloud Functions
- * Supports Server-to-Server Paystack Transaction Initialization, Server Verification,
- * Mandatory Bank Account Resolution, Automated Payouts, HMAC SHA512 Webhooks,
- * Idempotency Protection, Atomic Wallet Balances, Escrow Locking, and Match Settlement.
+ * Production-Grade Financial Security: Two-Phase Locking, Atomic State Transitions,
+ * Guaranteed Wallet Balance Reservations, Mandatory Bank Account Resolution,
+ * Idempotent Webhook Processing, and Exactly-Once Automated Refunds.
  */
 
 const functions = require("firebase-functions");
@@ -13,7 +13,7 @@ const https = require("https");
 admin.initializeApp();
 const db = admin.database();
 
-// Retrieve secrets securely from environment or functions.config()
+// Retrieve secrets securely from environment secrets. Never hardcode credentials.
 const PAYSTACK_SECRET_KEY =
   process.env.PAYSTACK_SECRET_KEY ||
   (functions.config && functions.config().paystack ? functions.config().paystack.secret_key : null) ||
@@ -36,7 +36,7 @@ const PLATFORM_FEE_PERCENT = 0.10; // 10% Platform fee
  */
 exports.getPaystackConfig = functions.https.onCall(async (data, context) => {
   return {
-    publicKey: PAYSTACK_PUBLIC_KEY
+    publicKey: PAYSTACK_PUBLIC_KEY || null
   };
 });
 
@@ -46,7 +46,7 @@ exports.getPaystackConfig = functions.https.onCall(async (data, context) => {
 function makePaystackRequest(path, method, data = null) {
   return new Promise((resolve, reject) => {
     if (!PAYSTACK_SECRET_KEY) {
-      return reject(new Error("Paystack secret key is not configured in Cloud Functions."));
+      return reject(new Error("Paystack secret key is not configured in Cloud Functions environment."));
     }
 
     const options = {
@@ -107,7 +107,7 @@ exports.initializePaystackTransaction = functions.https.onCall(async (data, cont
   if (!PAYSTACK_SECRET_KEY) {
     throw new functions.https.HttpsError(
       "failed-precondition",
-      "Paystack secret key is not configured in Firebase Cloud Functions environment. Please configure PAYSTACK_SECRET_KEY."
+      "Paystack secret key is not configured in Firebase Cloud Functions environment."
     );
   }
 
@@ -156,7 +156,7 @@ exports.initializePaystackTransaction = functions.https.onCall(async (data, cont
       authorization_url: paystackRes.data.authorization_url,
       access_code: paystackRes.data.access_code,
       reference: reference,
-      publicKey: PAYSTACK_PUBLIC_KEY
+      publicKey: PAYSTACK_PUBLIC_KEY || null
     };
 
   } catch (error) {
@@ -167,14 +167,17 @@ exports.initializePaystackTransaction = functions.https.onCall(async (data, cont
 
 /**
  * Server-Side Verification Callable Function for Paystack Deposits
- * Requires:
+ * Critical Security Checks:
  * 1. Authenticated user
- * 2. Matching pending transaction record
- * 3. Matching user ID
+ * 2. Matching pending deposit transaction in database
+ * 3. User ID match on both database record and Paystack metadata
  * 4. Correct NGN currency
- * 5. Exact expected amount
- * 6. Successful Paystack verification status
- * Atomic & Idempotent: credits user's cash balance exactly once.
+ * 5. Exact expected amount match
+ * 6. Paystack status === "success"
+ * Two-Phase Locking:
+ * Status is transitioned from PENDING -> CREDITING.
+ * Wallet balance transaction is executed.
+ * Status is transitioned to SUCCESS ONLY IF balance credit is guaranteed committed.
  */
 exports.verifyPaystackDeposit = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -202,7 +205,7 @@ exports.verifyPaystackDeposit = functions.https.onCall(async (data, context) => 
   }
   const pendingTx = pendingSnap.val();
 
-  // 2. Verify matching user ID
+  // 2. Verify user ID ownership
   if (pendingTx.userId !== userId) {
     throw new functions.https.HttpsError("permission-denied", "Transaction does not belong to authenticated user.");
   }
@@ -222,19 +225,19 @@ exports.verifyPaystackDeposit = functions.https.onCall(async (data, context) => 
 
   const txData = paystackRes.data;
 
-  // 4. Verify successful Paystack status
+  // 4. Verify Paystack status
   if (txData.status !== "success") {
     await db.ref(`pendingDeposits/${reference}/status`).set("FAILED");
     await db.ref(`users/${userId}/transactions/${reference}/status`).set("FAILED");
     throw new functions.https.HttpsError("failed-precondition", `Payment status is ${txData.status}. Deposit not credited.`);
   }
 
-  // 5. Verify correct NGN currency
+  // 5. Verify currency
   if (txData.currency !== "NGN" || pendingTx.currency !== "NGN") {
     throw new functions.https.HttpsError("failed-precondition", "Invalid transaction currency. Expected NGN.");
   }
 
-  // 6. Verify exact expected amount
+  // 6. Verify exact amount
   const creditedAmount = txData.amount / 100; // Convert kobo to Naira
   if (creditedAmount !== pendingTx.amount) {
     throw new functions.https.HttpsError(
@@ -243,34 +246,58 @@ exports.verifyPaystackDeposit = functions.https.onCall(async (data, context) => 
     );
   }
 
-  // 7. Verify metadata user ID matches
+  // 7. Verify metadata user ID
   if (txData.metadata && txData.metadata.userId && txData.metadata.userId !== userId) {
     throw new functions.https.HttpsError("permission-denied", "Paystack metadata user ID does not match authenticated user.");
   }
 
-  // 8. Atomic & Idempotent Crediting via status transition from PENDING -> SUCCESS
+  // 8. Phase 1 Lock: Transition status from PENDING -> CREDITING
   const statusRef = db.ref(`pendingDeposits/${reference}/status`);
-  const statusTx = await statusRef.transaction((currentStatus) => {
+  const lockTx = await statusRef.transaction((currentStatus) => {
     if (currentStatus === "SUCCESS") {
-      return; // Already processed and credited, abort transaction
+      return; // Already processed and credited
     }
-    return "SUCCESS";
+    if (currentStatus === "CREDITING") {
+      return; // Concurrently being processed by another worker
+    }
+    return "CREDITING";
   });
 
-  if (!statusTx.committed) {
-    return {
-      success: true,
-      message: "Transaction already verified and credited.",
-      amount: creditedAmount
-    };
+  if (!lockTx.committed) {
+    const latestStatusSnap = await statusRef.once("value");
+    if (latestStatusSnap.val() === "SUCCESS") {
+      return {
+        success: true,
+        message: "Transaction already verified and credited.",
+        amount: creditedAmount
+      };
+    }
+    throw new functions.https.HttpsError("failed-precondition", "Deposit is currently being processed.");
   }
 
-  // Credit balance atomically
-  await db.ref(`users/${userId}/wallet/cashBalance`).transaction((current) => {
-    return (current || 0) + creditedAmount;
-  });
+  // 9. Phase 2: Guaranteed Wallet Balance Update
+  let creditCommitted = false;
+  try {
+    const balanceTx = await db.ref(`users/${userId}/wallet/cashBalance`).transaction((current) => {
+      return (current || 0) + creditedAmount;
+    });
 
-  // Record completed transactions
+    if (balanceTx.committed) {
+      creditCommitted = true;
+    }
+  } catch (balanceErr) {
+    console.error("Balance Credit Error:", balanceErr);
+  }
+
+  if (!creditCommitted) {
+    // Rollback status to PENDING so retry can succeed
+    await statusRef.set("PENDING");
+    throw new functions.https.HttpsError("internal", "Failed to update wallet balance. Please retry.");
+  }
+
+  // 10. Mark SUCCESS ONLY after balance credit is verified committed
+  await statusRef.set("SUCCESS");
+
   await db.ref(`processedTransactions/${reference}`).set({
     userId: userId,
     amount: creditedAmount,
@@ -297,7 +324,8 @@ exports.verifyPaystackDeposit = functions.https.onCall(async (data, context) => 
 
 /**
  * Paystack Webhook Handler
- * Validates HMAC SHA512 signature and processes events idempotently.
+ * Safe Retry Handling: Events are marked as processed ONLY AFTER financial operations commit.
+ * Failed transfers trigger an exact-once atomic refund.
  */
 exports.paystackWebhook = functions.https.onRequest(async (req, res) => {
   try {
@@ -324,92 +352,121 @@ exports.paystackWebhook = functions.https.onRequest(async (req, res) => {
     const eventType = event.event;
     const data = event.data;
 
-    // Event Idempotency Check
     const eventKey = `${eventType}_${data.id || data.reference || data.transfer_code}`;
-    const eventRef = db.ref(`processedWebhookEvents/${eventKey}`);
-    const eventTx = await eventRef.transaction((current) => {
-      if (current) return; // already processed
-      return true;
-    });
-
-    if (!eventTx.committed) {
-      return res.status(200).send("Webhook event already processed.");
+    const eventCheck = await db.ref(`processedWebhookEvents/${eventKey}`).once("value");
+    if (eventCheck.exists()) {
+      return res.status(200).send("Webhook event already completed.");
     }
 
     // A. DEPOSIT SUCCESS WEBHOOK
     if (eventType === "charge.success") {
       const reference = data.reference;
       const amount = data.amount / 100; // kobo to Naira
-      const userEmail = data.customer ? data.customer.email : null;
 
-      const statusRef = db.ref(`pendingDeposits/${reference}/status`);
-      const statusTx = await statusRef.transaction((current) => {
-        if (current === "SUCCESS") return;
-        return "SUCCESS";
-      });
+      // Resolve userId directly from pending deposit record or metadata
+      let userId = null;
+      const pendingSnap = await db.ref(`pendingDeposits/${reference}`).once("value");
+      if (pendingSnap.exists()) {
+        userId = pendingSnap.val().userId;
+      } else if (data.metadata && data.metadata.userId) {
+        userId = data.metadata.userId;
+      }
 
-      if (statusTx.committed && userEmail) {
-        const usersSnap = await db.ref("users").orderByChild("email").equalTo(userEmail).once("value");
-        if (usersSnap.exists()) {
-          const userId = Object.keys(usersSnap.val())[0];
+      if (userId) {
+        const statusRef = db.ref(`pendingDeposits/${reference}/status`);
+        const statusTx = await statusRef.transaction((current) => {
+          if (current === "SUCCESS" || current === "CREDITING") return;
+          return "CREDITING";
+        });
 
-          await db.ref(`users/${userId}/wallet/cashBalance`).transaction((current) => {
+        if (statusTx.committed) {
+          const creditTx = await db.ref(`users/${userId}/wallet/cashBalance`).transaction((current) => {
             return (current || 0) + amount;
           });
 
-          await db.ref(`processedTransactions/${reference}`).set({
-            userId: userId,
-            amount: amount,
-            gateway: "PAYSTACK_WEBHOOK",
-            processedAt: admin.database.ServerValue.TIMESTAMP
-          });
+          if (creditTx.committed) {
+            await statusRef.set("SUCCESS");
 
-          await db.ref(`users/${userId}/transactions/${reference}`).set({
-            type: "DEPOSIT",
-            amount: amount,
-            currency: "NGN",
-            gateway: "PAYSTACK_WEBHOOK",
-            status: "SUCCESS",
-            reference: reference,
-            createdAt: admin.database.ServerValue.TIMESTAMP
-          });
+            await db.ref(`processedTransactions/${reference}`).set({
+              userId: userId,
+              amount: amount,
+              gateway: "PAYSTACK_WEBHOOK",
+              processedAt: admin.database.ServerValue.TIMESTAMP
+            });
+
+            await db.ref(`users/${userId}/transactions/${reference}`).set({
+              type: "DEPOSIT",
+              amount: amount,
+              currency: "NGN",
+              gateway: "PAYSTACK_WEBHOOK",
+              status: "SUCCESS",
+              reference: reference,
+              createdAt: admin.database.ServerValue.TIMESTAMP
+            });
+
+            // Mark event processed ONLY after successful credit
+            await db.ref(`processedWebhookEvents/${eventKey}`).set(admin.database.ServerValue.TIMESTAMP);
+          } else {
+            await statusRef.set("PENDING");
+            return res.status(500).send("Database balance credit failed; allowing webhook retry.");
+          }
         }
       }
     }
 
     // B. TRANSFER / WITHDRAWAL SUCCESS WEBHOOK
     else if (eventType === "transfer.success") {
-      const transferCode = data.transfer_code || data.reference;
-      const txSnap = await db.ref(`pendingWithdrawals/${transferCode}`).once("value");
+      let withdrawalKey = data.reference;
+      if (!withdrawalKey && data.transfer_code) {
+        const mapSnap = await db.ref(`transferCodeMap/${data.transfer_code}`).once("value");
+        withdrawalKey = mapSnap.exists() ? mapSnap.val() : data.transfer_code;
+      }
+
+      const txSnap = await db.ref(`pendingWithdrawals/${withdrawalKey}`).once("value");
       if (txSnap.exists()) {
         const withdrawData = txSnap.val();
-        await db.ref(`pendingWithdrawals/${transferCode}/status`).set("SUCCESS");
-        await db.ref(`users/${withdrawData.userId}/transactions/${transferCode}/status`).set("SUCCESS");
+        await db.ref(`pendingWithdrawals/${withdrawalKey}/status`).set("SUCCESS");
+        await db.ref(`users/${withdrawData.userId}/transactions/${withdrawalKey}/status`).set("SUCCESS");
+        await db.ref(`pendingWithdrawals/${withdrawalKey}/completedAt`).set(admin.database.ServerValue.TIMESTAMP);
       }
+      await db.ref(`processedWebhookEvents/${eventKey}`).set(admin.database.ServerValue.TIMESTAMP);
     }
 
     // C. TRANSFER / WITHDRAWAL FAILED OR REVERSED WEBHOOK (EXACTLY-ONCE ATOMIC REFUND)
     else if (eventType === "transfer.failed" || eventType === "transfer.reversed") {
-      const transferCode = data.transfer_code || data.reference;
-      const txSnap = await db.ref(`pendingWithdrawals/${transferCode}`).once("value");
+      let withdrawalKey = data.reference;
+      if (!withdrawalKey && data.transfer_code) {
+        const mapSnap = await db.ref(`transferCodeMap/${data.transfer_code}`).once("value");
+        withdrawalKey = mapSnap.exists() ? mapSnap.val() : data.transfer_code;
+      }
+
+      const txSnap = await db.ref(`pendingWithdrawals/${withdrawalKey}`).once("value");
       if (txSnap.exists()) {
         const withdrawData = txSnap.val();
 
-        // Atomic status transition ensures refund executes EXACTLY ONCE
-        const statusRef = db.ref(`pendingWithdrawals/${transferCode}/status`);
-        const refundTx = await statusRef.transaction((current) => {
-          if (current === "FAILED_REFUNDED") {
-            return; // Already refunded, do not double refund!
+        // Atomic status transition from PROCESSING -> REFUNDING guarantees single execution
+        const statusRef = db.ref(`pendingWithdrawals/${withdrawalKey}/status`);
+        const refundLock = await statusRef.transaction((current) => {
+          if (current === "FAILED_REFUNDED" || current === "REFUNDING") {
+            return; // Already refunded or currently refunding
           }
-          return "FAILED_REFUNDED";
+          return "REFUNDING";
         });
 
-        if (refundTx.committed) {
-          await db.ref(`users/${withdrawData.userId}/wallet/cashBalance`).transaction((current) => {
+        if (refundLock.committed) {
+          const refundTx = await db.ref(`users/${withdrawData.userId}/wallet/cashBalance`).transaction((current) => {
             return (current || 0) + withdrawData.amount;
           });
-          await db.ref(`users/${withdrawData.userId}/transactions/${transferCode}/status`).set("FAILED_REFUNDED");
-          await db.ref(`pendingWithdrawals/${transferCode}/refundedAt`).set(admin.database.ServerValue.TIMESTAMP);
+
+          if (refundTx.committed) {
+            await statusRef.set("FAILED_REFUNDED");
+            await db.ref(`users/${withdrawData.userId}/transactions/${withdrawalKey}/status`).set("FAILED_REFUNDED");
+            await db.ref(`pendingWithdrawals/${withdrawalKey}/refundedAt`).set(admin.database.ServerValue.TIMESTAMP);
+            await db.ref(`processedWebhookEvents/${eventKey}`).set(admin.database.ServerValue.TIMESTAMP);
+          } else {
+            await statusRef.set("PROCESSING"); // Allow retry on failure
+            return res.status(500).send("Refund balance credit failed; allowing webhook retry.");
+          }
         }
       }
     }
@@ -425,9 +482,9 @@ exports.paystackWebhook = functions.https.onRequest(async (req, res) => {
  * Automated Bank Withdrawal Function
  * 1. Validates inputs
  * 2. Mandatory bank account resolution (rejects withdrawal if unverified)
- * 3. Atomic balance reservation
+ * 3. Atomic balance reservation: verifies result.committed === true
  * 4. Paystack Transfer Recipient creation (using verifiedAccountName)
- * 5. Paystack Transfer execution
+ * 5. Paystack Transfer execution (sets status to PROCESSING, NOT SUCCESS)
  * 6. Exactly-once atomic refund if transfer fails
  */
 exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context) => {
@@ -460,7 +517,7 @@ exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context
     );
   }
 
-  // 1. Mandatory Bank Account Resolution with Paystack API
+  // 1. Mandatory Bank Account Resolution with Paystack API BEFORE any balance reservation
   let verifiedAccountName = "";
   try {
     const resolveRes = await makePaystackRequest(
@@ -469,7 +526,7 @@ exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context
     );
 
     if (!resolveRes || !resolveRes.status || !resolveRes.data || !resolveRes.data.account_name) {
-      throw new Error((resolveRes && resolveRes.message) || "Account details could not be resolved by the bank.");
+      throw new Error((resolveRes && resolveRes.message) || "Account details could not be resolved by bank.");
     }
 
     verifiedAccountName = resolveRes.data.account_name;
@@ -481,22 +538,22 @@ exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context
     );
   }
 
-  // 2. Atomic Balance Reservation to Prevent Double Spending
+  // 2. Atomic Balance Reservation: strictly confirm result.committed === true
   const balanceRef = db.ref(`users/${userId}/wallet/cashBalance`);
-  const result = await balanceRef.transaction((currentBalance) => {
+  const reserveResult = await balanceRef.transaction((currentBalance) => {
     if ((currentBalance || 0) < amount) {
       return; // Insufficient funds, abort transaction
     }
     return currentBalance - amount;
   });
 
-  if (!result.committed) {
+  if (!reserveResult.committed || !reserveResult.snapshot) {
     throw new functions.https.HttpsError("failed-precondition", "Insufficient cash balance for this withdrawal.");
   }
 
   const txId = `WD_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
 
-  // Save pending withdrawal record
+  // Save pending withdrawal record with status PROCESSING
   await db.ref(`pendingWithdrawals/${txId}`).set({
     userId: userId,
     amount: amount,
@@ -551,37 +608,46 @@ exports.processAutomatedWithdrawal = functions.https.onCall(async (data, context
 
     const transferStatus = transferRes.data.status;
 
-    if (transferStatus === "success" || transferStatus === "pending" || transferStatus === "processing") {
-      await db.ref(`pendingWithdrawals/${txId}/status`).set(transferStatus === "success" ? "SUCCESS" : "PROCESSING");
-      await db.ref(`users/${userId}/transactions/${txId}/status`).set(transferStatus === "success" ? "SUCCESS" : "PROCESSING");
+    // Do NOT report as SUCCESS merely because transfer request was accepted. Keep PROCESSING until confirmed.
+    const initialStatus = transferStatus === "success" ? "SUCCESS" : "PROCESSING";
 
-      return {
-        success: true,
-        message: `Automated withdrawal of ₦${amount.toLocaleString()} initiated to ${verifiedAccountName}.`,
-        reference: txId,
-        accountName: verifiedAccountName,
-        status: transferStatus
-      };
-    } else {
-      throw new Error(`Transfer rejected with status: ${transferStatus}`);
+    await db.ref(`pendingWithdrawals/${txId}/status`).set(initialStatus);
+    await db.ref(`users/${userId}/transactions/${txId}/status`).set(initialStatus);
+    if (transferRes.data.transfer_code) {
+      await db.ref(`pendingWithdrawals/${txId}/transferCode`).set(transferRes.data.transfer_code);
+      await db.ref(`transferCodeMap/${transferRes.data.transfer_code}`).set(txId);
     }
+
+    return {
+      success: true,
+      message: `Automated withdrawal of ₦${amount.toLocaleString()} submitted to ${verifiedAccountName}.`,
+      reference: txId,
+      accountName: verifiedAccountName,
+      status: initialStatus
+    };
 
   } catch (error) {
     console.error("Automated Withdrawal Transfer Execution Error:", error);
 
-    // EXACTLY-ONCE ATOMIC REFUND ON FAILURE
+    // EXACTLY-ONCE ATOMIC REFUND ON TRANSFER INITIATION FAILURE
     const statusRef = db.ref(`pendingWithdrawals/${txId}/status`);
-    const refundTx = await statusRef.transaction((current) => {
-      if (current === "FAILED_REFUNDED") return;
-      return "FAILED_REFUNDED";
+    const refundLock = await statusRef.transaction((current) => {
+      if (current === "FAILED_REFUNDED" || current === "REFUNDING") return;
+      return "REFUNDING";
     });
 
-    if (refundTx.committed) {
-      await balanceRef.transaction((current) => {
+    if (refundLock.committed) {
+      const refundTx = await balanceRef.transaction((current) => {
         return (current || 0) + amount;
       });
-      await db.ref(`users/${userId}/transactions/${txId}/status`).set("FAILED_REFUNDED");
-      await db.ref(`pendingWithdrawals/${txId}/refundedAt`).set(admin.database.ServerValue.TIMESTAMP);
+
+      if (refundTx.committed) {
+        await statusRef.set("FAILED_REFUNDED");
+        await db.ref(`users/${userId}/transactions/${txId}/status`).set("FAILED_REFUNDED");
+        await db.ref(`pendingWithdrawals/${txId}/refundedAt`).set(admin.database.ServerValue.TIMESTAMP);
+      } else {
+        await statusRef.set("PROCESSING");
+      }
     }
 
     throw new functions.https.HttpsError(
