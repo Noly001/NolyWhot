@@ -67,7 +67,7 @@ content="width=device-width, initial-scale=1.0, user-scalable=no">
             <button class="stake-opt-btn" data-stake="1000" data-fee="100" data-prize="1800">₦1,000 STAKE</button>
         </div>
         <div class="stake-info-summary" id="stakeSummaryText">
-            Mode: Free Practice (No entry fee, 0 PTS stake)
+            Mode: Free Practice (No entry fee, Free Practice Match)
         </div>
     </div>
 
@@ -481,7 +481,7 @@ document.addEventListener("DOMContentLoaded", function() {
             const prize = btn.getAttribute("data-prize");
 
             if (stake === "0") {
-                stakeSummary.textContent = "Mode: Free Practice (No entry fee, 0 PTS stake)";
+                stakeSummary.textContent = "Mode: Free Practice (No entry fee, Free Practice Match)";
             } else {
                 stakeSummary.textContent = `Entry: ₦${stake} | Platform Fee (10%): ₦${fee} | Winner Prize: ₦${prize}`;
             }
