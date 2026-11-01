@@ -23,15 +23,11 @@
 
         <!-- Wallet Balance Summary Widget -->
         <div class="wallet-widget">
-            <div class="wallet-widget-title">💰 YOUR WALLET BALANCES</div>
-            <div class="wallet-balances-row">
-                <div class="balance-box">
-                    <span class="lbl">DEMO BALANCE</span>
-                    <span class="val" id="demoBalanceText">10,000 PTS</span>
-                </div>
-                <div class="balance-box">
-                    <span class="lbl">REAL CASH (NGN)</span>
-                    <span class="val cash" id="cashBalanceText">₦0.00</span>
+            <div class="wallet-widget-title">💰 YOUR WALLET CASH BALANCE</div>
+            <div class="wallet-balances-row" style="justify-content: center;">
+                <div class="balance-box" style="flex: 1; text-align: center;">
+                    <span class="lbl">AVAILABLE CASH (NGN)</span>
+                    <span class="val cash" id="cashBalanceText" style="font-size: 24px;">₦0.00</span>
                 </div>
             </div>
         </div>
@@ -76,20 +72,15 @@
         </div>
 
         <div class="wallet-tab-content active" id="wtab-overview">
-            <div class="wallet-card-grid">
-                <div class="wcard">
-                    <div class="wtitle">Available Cash Balance</div>
-                    <div class="wvalue" id="modalCashBalance">₦0.00</div>
-                    <div class="wsub">Verified Withdrawable Funds</div>
-                </div>
-                <div class="wcard">
-                    <div class="wtitle">Demo Practice Balance</div>
-                    <div class="wvalue" id="modalDemoBalance">10,000 PTS</div>
-                    <div class="wsub">Free Practice Points</div>
+            <div class="wallet-card-grid" style="grid-template-columns: 1fr;">
+                <div class="wcard" style="text-align: center; padding: 25px;">
+                    <div class="wtitle" style="font-size: 15px;">Available NGN Cash Balance</div>
+                    <div class="wvalue" id="modalCashBalance" style="font-size: 34px; margin: 10px 0;">₦0.00</div>
+                    <div class="wsub">Verified Real-Money Funds (Withdrawable to Nigerian Bank Accounts)</div>
                 </div>
             </div>
             <div class="security-banner">
-                🛡️ <strong>Payment Security:</strong> Wallet balances are protected by server-side verification. Real-money deposits & withdrawals require verified payment provider setup (Paystack/Flutterwave).
+                🛡️ <strong>Payment Security:</strong> Wallet balances are strictly verified server-side. Real-money deposits are credited automatically via Paystack confirmation, and withdrawals are sent directly to your verified bank account.
             </div>
         </div>
 
@@ -105,7 +96,6 @@
                 <select id="depositProvider">
                     <option value="paystack">Paystack Gateway (Cards, Bank Transfer, USSD)</option>
                     <option value="flutterwave">Flutterwave Gateway (Mobile Money, Cards)</option>
-                    <option value="demo">Demo Instant Deposit (Testing Only)</option>
                 </select>
             </div>
             <button id="btnProcessDeposit" class="action-btn-gold">PROCEED TO SECURE DEPOSIT</button>
@@ -188,8 +178,7 @@ const functions = getFunctions(app);
 
 let currentUserId = null;
 let currentWalletData = {
-    cashBalance: 0,
-    demoBalance: 10000
+    cashBalance: 0
 };
 let paystackPublicKey = null;
 
@@ -231,11 +220,7 @@ onAuthStateChanged(auth, async (user) => {
             if (wSnap.exists()) {
                 currentWalletData = wSnap.val();
             } else {
-                // Initialize default demo balance without writing restricted cashBalance
-                currentWalletData = { cashBalance: 0, demoBalance: 10000 };
-                set(ref(database, "users/" + user.uid + "/wallet/demoBalance"), 10000).catch(err => {
-                    console.warn("Could not set initial demoBalance in database:", err);
-                });
+                currentWalletData = { cashBalance: 0 };
             }
             updateWalletUI();
         });
@@ -254,13 +239,16 @@ onAuthStateChanged(auth, async (user) => {
 
 function updateWalletUI() {
     const cash = currentWalletData.cashBalance || 0;
-    const demo = currentWalletData.demoBalance || 10000;
 
-    document.getElementById("demoBalanceText").textContent = demo.toLocaleString() + " PTS";
-    document.getElementById("cashBalanceText").textContent = "₦" + cash.toLocaleString("en-NG", { minimumFractionDigits: 2 });
+    const cashTextEl = document.getElementById("cashBalanceText");
+    if (cashTextEl) {
+        cashTextEl.textContent = "₦" + cash.toLocaleString("en-NG", { minimumFractionDigits: 2 });
+    }
 
-    document.getElementById("modalCashBalance").textContent = "₦" + cash.toLocaleString("en-NG", { minimumFractionDigits: 2 });
-    document.getElementById("modalDemoBalance").textContent = demo.toLocaleString() + " PTS";
+    const modalCashEl = document.getElementById("modalCashBalance");
+    if (modalCashEl) {
+        modalCashEl.textContent = "₦" + cash.toLocaleString("en-NG", { minimumFractionDigits: 2 });
+    }
 }
 
 function renderTransactions(txObject) {
@@ -343,20 +331,7 @@ document.getElementById("btnProcessDeposit").addEventListener("click", async () 
         return;
     }
 
-    if (provider === "demo") {
-        try {
-            const newDemo = (currentWalletData.demoBalance || 10000) + amount;
-            await set(ref(database, "users/" + currentUserId + "/wallet/demoBalance"), newDemo);
-
-            msg.textContent = "✅ Demo PTS Deposit of " + amount.toLocaleString() + " PTS successful!";
-            msg.style.color = "#2ecc71";
-            document.getElementById("depositAmount").value = "";
-        } catch (err) {
-            console.error("Demo deposit error:", err);
-            msg.textContent = "⚠️ Demo balance updated locally.";
-            msg.style.color = "#2ecc71";
-        }
-    } else if (provider === "paystack") {
+    if (provider === "paystack") {
         msg.textContent = "🔒 Calling server to initialize secure Paystack transaction...";
         msg.style.color = "#f1c40f";
 
@@ -399,7 +374,7 @@ document.getElementById("btnProcessDeposit").addEventListener("click", async () 
             }
         } catch (err) {
             console.error("Paystack Initialization Error:", err);
-            msg.innerHTML = `⚠️ <strong>Payment Gateway Notice:</strong> ${err.message || "Could not connect to Paystack Cloud Function"}.<br><small>To enable real-money deposits, ensure PAYSTACK_SECRET_KEY is configured in Firebase Cloud Functions secrets. You can test immediately using 'Demo Instant Deposit'.</small>`;
+            msg.innerHTML = `⚠️ <strong>Payment Gateway Notice:</strong> ${err.message || "Could not connect to Paystack Cloud Function"}.<br><small>To enable real-money deposits, ensure PAYSTACK_SECRET_KEY is configured in Firebase Cloud Functions secrets.</small>`;
             msg.style.color = "#f1c40f";
         }
     } else {
