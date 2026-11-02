@@ -707,6 +707,7 @@ SHAPE CHOOSER & GAME OVER
    LUXURY ONLINE LOBBY & STAKE BOX
 ===================================== */
 
+#modeSelection,
 #onlineLobby {
     position: relative;
     z-index: 9999;
@@ -725,6 +726,7 @@ SHAPE CHOOSER & GAME OVER
         linear-gradient(145deg, #031b14, #062d20 45%, #010b08);
 }
 
+#modeSelection h1,
 #onlineLobby h1 {
     margin: 0 0 8px;
     font-size: 44px;
@@ -919,4 +921,48 @@ SHAPE CHOOSER & GAME OVER
     border: 2px solid #d4af37;
     font-size:55px;
     pointer-events:none;
+}
+
+/* ==========================================
+   MULTIPLAYER CONNECTION STATUS BADGES & OVERLAY
+========================================== */
+.connection-status-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 10px;
+}
+
+.conn-badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    white-space: nowrap;
+    border: 1px solid transparent;
+}
+
+.conn-connected {
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+    border-color: #2ecc71;
+}
+
+.conn-poor {
+    background: rgba(241, 196, 15, 0.15);
+    color: #f1c40f;
+    border-color: #f1c40f;
+}
+
+.conn-disconnected {
+    background: rgba(231, 76, 60, 0.15);
+    color: #e74c3c;
+    border-color: #e74c3c;
+}
+
+.conn-reconnecting {
+    background: rgba(230, 126, 34, 0.15);
+    color: #e67e22;
+    border-color: #e67e22;
 }
