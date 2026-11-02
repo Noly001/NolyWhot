@@ -183,6 +183,11 @@ TIME
 
 <button id="soundToggleButton" onclick="toggleMute()" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: rgba(0,0,0,0.6); color: #f5c542; border: 1px solid #f5c542; border-radius: 6px; cursor: pointer; margin-left: 8px;">🔊 Sound ON</button>
 
+<div class="connection-status-box" id="connectionStatusBox" style="display: none; align-items: center; gap: 6px; font-size: 11px; margin-left: 10px;">
+    <div id="selfConnectionBadge" class="conn-badge conn-connected">🟢 You: Connected</div>
+    <div id="opponentConnectionBadge" class="conn-badge conn-connected">🟢 Opponent: Connected</div>
+</div>
+
 </header>
 
 
@@ -461,6 +466,19 @@ Star
         🏠 HOME
     </button>
 
+</div>
+
+<!-- ===========================
+     CONNECTION RECOVERY OVERLAY
+=========================== -->
+<div id="reconnectionOverlay" class="modal-overlay hidden" style="background: rgba(5, 34, 20, 0.95); z-index: 10000;">
+    <div class="modal-card" style="text-align: center; max-width: 420px; padding: 30px; border: 2px solid #f7d070; background: #0b3d26; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
+        <div id="reconnIcon" style="font-size: 48px; margin-bottom: 12px;">📡</div>
+        <h3 id="reconnTitle" style="color: #f7d070; margin-top: 0; margin-bottom: 10px; font-size: 20px;">Connection Interrupted</h3>
+        <p id="reconnMessage" style="color: #e0d0a0; font-size: 14px; line-height: 1.5; margin: 10px 0;">Waiting for network reconnection...</p>
+        <div style="font-size: 36px; font-weight: bold; color: #ff6b6b; margin: 15px 0;" id="reconnCountdown">30s</div>
+        <p style="color: #a8c0b0; font-size: 12px; margin: 0;">Cards, scores and match state are securely preserved.</p>
+    </div>
 </div>
 
 <!-- ===========================

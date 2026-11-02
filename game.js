@@ -9,7 +9,9 @@ import {
     set,
     onValue,
     runTransaction,
-    push
+    push,
+    onDisconnect,
+    serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
@@ -826,6 +828,10 @@ function listenToOnlineGame(){
 
     }
 
+    if(typeof initConnectionMonitoring === "function"){
+        initConnectionMonitoring();
+    }
+
     onValue(
         onlineGameRef,
         (snapshot)=>{
@@ -1024,6 +1030,199 @@ if(gameOver){
 
 }
 // =====================================
+// MULTIPLAYER CONNECTION MONITORING & AUTO-RECOVERY
+// =====================================
+
+let heartbeatInterval = null;
+let heartbeatCheckInterval = null;
+let reconnectionCountdownInterval = null;
+let opponentLastHeartbeatTime = 0;
+let isReconnecting = false;
+let reconnectionSecondsRemaining = 30;
+
+function updateConnectionUI(target, status) {
+    const badge = target === "self" ? document.getElementById("selfConnectionBadge") : document.getElementById("opponentConnectionBadge");
+    const label = target === "self" ? "You" : "Opponent";
+    if (!badge) return;
+
+    badge.className = "conn-badge";
+    if (status === "connected") {
+        badge.classList.add("conn-connected");
+        badge.innerHTML = `🟢 ${label}: Connected`;
+    } else if (status === "poor") {
+        badge.classList.add("conn-poor");
+        badge.innerHTML = `🟡 ${label}: Poor Connection`;
+    } else if (status === "disconnected") {
+        badge.classList.add("conn-disconnected");
+        badge.innerHTML = `🔴 ${label}: Disconnected`;
+    } else if (status === "reconnecting") {
+        badge.classList.add("conn-reconnecting");
+        badge.innerHTML = `🟠 ${label}: Reconnecting`;
+    }
+}
+
+function showReconnectionOverlay(title, message, isSelf = false) {
+    const overlay = document.getElementById("reconnectionOverlay");
+    const reconnTitle = document.getElementById("reconnTitle");
+    const reconnMessage = document.getElementById("reconnMessage");
+    const reconnCountdown = document.getElementById("reconnCountdown");
+
+    if (!overlay) return;
+    if (gameOver) return;
+
+    // Pause turn timer while reconnection is underway
+    clearInterval(timer);
+
+    overlay.classList.remove("hidden");
+    if (reconnTitle) reconnTitle.textContent = title;
+    if (reconnMessage) reconnMessage.textContent = message;
+
+    if (!isReconnecting) {
+        isReconnecting = true;
+        reconnectionSecondsRemaining = 30;
+        if (reconnCountdown) reconnCountdown.textContent = `${reconnectionSecondsRemaining}s`;
+
+        clearInterval(reconnectionCountdownInterval);
+        reconnectionCountdownInterval = setInterval(() => {
+            reconnectionSecondsRemaining--;
+            if (reconnCountdown) reconnCountdown.textContent = `${reconnectionSecondsRemaining}s`;
+
+            if (reconnectionSecondsRemaining <= 0) {
+                clearInterval(reconnectionCountdownInterval);
+                if (reconnMessage) {
+                    reconnMessage.textContent = isSelf
+                        ? "Could not reconnect to game server. Please return to menu."
+                        : "Opponent failed to reconnect. Match ended.";
+                }
+            }
+        }, 1000);
+    }
+}
+
+function hideReconnectionOverlay() {
+    const overlay = document.getElementById("reconnectionOverlay");
+    if (overlay) overlay.classList.add("hidden");
+
+    clearInterval(reconnectionCountdownInterval);
+    isReconnecting = false;
+    reconnectionSecondsRemaining = 30;
+
+    // Resume turn timer if it is player's turn
+    if (playerTurn && !gameOver) {
+        startTimer();
+    }
+}
+
+function initConnectionMonitoring() {
+    if (!onlineMode || !currentRoomCode || !onlinePlayerNumber) return;
+
+    stopConnectionMonitoring();
+
+    const connBox = document.getElementById("connectionStatusBox");
+    if (connBox) connBox.style.display = "flex";
+
+    updateConnectionUI("self", "connected");
+    updateConnectionUI("opponent", "connected");
+
+    const myPlayerKey = `player${onlinePlayerNumber}`;
+    const opponentPlayerKey = onlinePlayerNumber === 1 ? "player2" : "player1";
+
+    const myPresenceRef = ref(database, `rooms/${currentRoomCode}/presence/${myPlayerKey}`);
+    const opponentPresenceRef = ref(database, `rooms/${currentRoomCode}/presence/${opponentPlayerKey}`);
+    const connectedRef = ref(database, ".info/connected");
+
+    // 1. Firebase .info/connected listener
+    onValue(connectedRef, (snap) => {
+        const isOnline = snap.val() === true;
+        if (isOnline) {
+            updateConnectionUI("self", "connected");
+            set(myPresenceRef, {
+                status: "connected",
+                lastHeartbeat: Date.now()
+            });
+
+            onDisconnect(myPresenceRef).set({
+                status: "disconnected",
+                lastSeen: serverTimestamp()
+            });
+
+            // If we were reconnecting, hide overlay and re-sync
+            if (isReconnecting) {
+                hideReconnectionOverlay();
+                updateBoard();
+                if (playerTurn) startTimer();
+            }
+        } else {
+            updateConnectionUI("self", "disconnected");
+            showReconnectionOverlay("You Are Disconnected", "Attempting to reconnect to game server...", true);
+        }
+    });
+
+    // 2. Periodic Local Heartbeat (every 2.5 seconds)
+    heartbeatInterval = setInterval(() => {
+        if (!onlineMode || !currentRoomCode) return;
+        set(ref(database, `rooms/${currentRoomCode}/presence/${myPlayerKey}/lastHeartbeat`), Date.now()).catch(() => {});
+    }, 2500);
+
+    // 3. Listen to Opponent Presence
+    onValue(opponentPresenceRef, (snap) => {
+        if (!snap.exists()) return;
+        const presence = snap.val();
+
+        if (presence.status === "disconnected") {
+            updateConnectionUI("opponent", "disconnected");
+            showReconnectionOverlay(
+                "Opponent Disconnected",
+                "Opponent connection lost. Waiting for automatic reconnection..."
+            );
+        } else if (presence.lastHeartbeat) {
+            opponentLastHeartbeatTime = presence.lastHeartbeat;
+        }
+    });
+
+    // 4. Heartbeat Latency Evaluation (every 1 second)
+    heartbeatCheckInterval = setInterval(() => {
+        if (!onlineMode || !currentRoomCode || gameOver) return;
+        if (!opponentLastHeartbeatTime) return;
+
+        const timeSince = Date.now() - opponentLastHeartbeatTime;
+
+        if (timeSince < 4500) {
+            // Normal connection
+            updateConnectionUI("opponent", "connected");
+            if (isReconnecting && !document.getElementById("reconnectionOverlay").classList.contains("hidden")) {
+                hideReconnectionOverlay();
+                updateBoard();
+                if (playerTurn) startTimer();
+            }
+        } else if (timeSince >= 4500 && timeSince < 9000) {
+            // Poor / Unstable connection
+            updateConnectionUI("opponent", "poor");
+        } else if (timeSince >= 9000) {
+            // Heartbeat lost -> Declare reconnecting
+            updateConnectionUI("opponent", "reconnecting");
+            showReconnectionOverlay(
+                "Opponent Connection Unstable",
+                "Opponent network is experiencing issues. Waiting for reconnection..."
+            );
+        }
+    }, 1000);
+}
+
+function stopConnectionMonitoring() {
+    clearInterval(heartbeatInterval);
+    clearInterval(heartbeatCheckInterval);
+    clearInterval(reconnectionCountdownInterval);
+    heartbeatInterval = null;
+    heartbeatCheckInterval = null;
+    reconnectionCountdownInterval = null;
+    hideReconnectionOverlay();
+
+    const connBox = document.getElementById("connectionStatusBox");
+    if (connBox) connBox.style.display = "none";
+}
+
+// =====================================
 // CANCEL QUICK MATCH
 // =====================================
 
@@ -1188,6 +1387,7 @@ function startQuickMatchGame(){
 
 listenToOnlineGame();
 listenForRematch();
+initConnectionMonitoring();
 
 // ==========================
 // PLAYER 1 CREATES GAME
@@ -1515,6 +1715,7 @@ onlineGameRef = ref(database, "rooms/" + roomCode + "/game");
 initializeVoiceForCurrentRoom();
 
 listenForRematch();
+initConnectionMonitoring();
         // ==========================
         // IMPORTANT:
         // REGISTER PLAYER 2
@@ -1845,6 +2046,14 @@ function toggleMute() {
         soundBtn.innerHTML = isMuted ? "🔇 Muted" : "🔊 Sound ON";
     }
 }
+window.toggleMute = toggleMute;
+
+document.addEventListener("DOMContentLoaded", () => {
+    const soundBtn = document.getElementById("soundToggleButton");
+    if (soundBtn) {
+        soundBtn.addEventListener("click", toggleMute);
+    }
+});
 
 const SHAPES = [
     "circle",
@@ -2118,6 +2327,9 @@ function startGame(){
 function startOnlineGame(){
     setupVoiceSignaling();
     listenForVoiceRequest();
+    if(typeof initConnectionMonitoring === "function"){
+        initConnectionMonitoring();
+    }
 
     console.log("🌐 Creating shared online game...");
 
@@ -3587,6 +3799,9 @@ function checkMarketWinner(){
 
 homeButton.onclick=function(){
 
+    if(typeof stopConnectionMonitoring === "function"){
+        try { stopConnectionMonitoring(); } catch(e){}
+    }
     if(typeof stopVoiceCall === "function"){
         try { stopVoiceCall(); } catch(e){}
     }
