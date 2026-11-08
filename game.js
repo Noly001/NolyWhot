@@ -2764,80 +2764,71 @@ function playCard(index){
 
     clearInterval(timer);
 
-    // ==========================
-    // ANIMATE SELECTED CARD
-    // ==========================
+    // =============================================
+    // IMMEDIATELY REMOVE CARD AND UPDATE HAND COUNT
+    // =============================================
+    playerHand.splice(index, 1);
 
-    const cardElement =
-        playerHandDiv.children[index];
+    topCard = card;
 
-    if(cardElement){
-
-        cardElement.classList.add("playing");
-
+    if(card.number !== 20){
+        requestedShape = null;
     }
 
-    setTimeout(()=>{
+    // Refresh hand count and card visual immediately
+    displayPlayerCards();
+    displayPlayedCard();
 
-        // ==========================
-        // REMOVE CARD FROM HAND
-        // ==========================
+    // =============================================
+    // ANIMATE PLAYED CARD FLYING TO CENTER TABLE
+    // =============================================
+    if(playedCardDiv){
+        playedCardDiv.classList.remove("playing");
+        void playedCardDiv.offsetWidth;
+        playedCardDiv.classList.add("playing");
+        setTimeout(()=>{
+            if(playedCardDiv) playedCardDiv.classList.remove("playing");
+        }, 400);
+    }
 
-        playerHand.splice(index,1);
+    // Sound
+    safePlayAudio(playSound, "play");
 
-        // ==========================
-        // PUT CARD ON CENTER
-        // ==========================
+    // ==========================
+    // WHOT (20)
+    // ==========================
 
-        topCard = card;
+    if(card.number === 20){
 
-        if(card.number !== 20){
-            requestedShape = null;
-        }
+        requestedShape = null;
 
-        // ==========================
-        // SOUND
-        // ==========================
+        updateBoard();
 
-        safePlayAudio(playSound, "play");
+        checkWinner();
 
-        // ==========================
-        // WHOT (20)
-        // ==========================
-
-        if(card.number === 20){
-
-            requestedShape = null;
-
-            displayPlayedCard();
-            displayPlayerCards();
-            updateBoard();
-
-            checkWinner();
-
-            if(gameOver){
-
-                syncOnlineGame();
-
-                return;
-
-            }
-
-            safePlayAudio(specialSound, "special");
-
-            // ==========================
-            // ONLINE MODE
-            // Wait for this player
-            // to choose the shape.
-            // ==========================
-
-            shapeChooser.classList.remove("hidden");
+        if(gameOver){
 
             syncOnlineGame();
 
             return;
 
         }
+
+        safePlayAudio(specialSound, "special");
+
+        // ==========================
+        // ONLINE MODE
+        // Wait for this player
+        // to choose the shape.
+        // ==========================
+
+        shapeChooser.classList.remove("hidden");
+
+        syncOnlineGame();
+
+        return;
+
+    }
 
 // ==========================
 // HOLD ON (1)
@@ -3235,7 +3226,18 @@ function opponentPlay(){
 
         if(newCard){
 
+            // Animate market card moving to computer hand
+            if(marketCardDiv){
+                marketCardDiv.classList.add("drawing-opponent");
+                setTimeout(()=>{
+                    if(marketCardDiv) marketCardDiv.classList.remove("drawing-opponent");
+                }, 380);
+            }
+
             opponentHand.push(newCard);
+            safePlayAudio(shuffleSound, "draw");
+            displayOpponentCards();
+            displayMarket();
 
             playableCards = opponentHand.filter(card => canPlay(card));
 
@@ -3280,49 +3282,49 @@ function opponentPlay(){
 
     }
 
-    // ==========================
-    // ANIMATE COMPUTER CARD
-    // ==========================
+    // Strictly verify chosen card is present in computer hand
+    const actualIndex = opponentHand.findIndex(c => c && c.shape === chosenCard.shape && c.number === chosenCard.number);
 
-    const cardElement = opponentHandDiv.children[index];
+    if(actualIndex === -1 || gameOver){
 
-    if(cardElement){
+        isOpponentThinking = false;
 
-        cardElement.classList.add("playing");
+        playerTurn = true;
+
+        updateBoard();
+
+        startTimer();
+
+        return;
 
     }
 
-    setTimeout(()=>{
+    // Immediately remove card from computer hand and update hand count
+    const card = opponentHand.splice(actualIndex, 1)[0];
 
-        const actualIndex = opponentHand.indexOf(chosenCard);
+    topCard = card;
 
-        if(actualIndex === -1 || gameOver){
-
-            isOpponentThinking = false;
-
-            playerTurn = true;
-
-            updateBoard();
-
-            startTimer();
-
-            return;
-
-        }
-
-        // Remove selected card from computer hand
-        const card = opponentHand.splice(actualIndex, 1)[0];
-
-        // Put card on center
-        topCard = card;
-
-        // Sound
-        safePlayAudio(playSound, "play");
-
-        // Display played card
-        displayPlayedCard();
-
+    if(card.number !== 20){
         requestedShape = null;
+    }
+
+    displayOpponentCards();
+    displayPlayedCard();
+
+    // Animate played card moving to center table
+    if(playedCardDiv){
+        playedCardDiv.classList.remove("playing");
+        void playedCardDiv.offsetWidth;
+        playedCardDiv.classList.add("playing");
+        setTimeout(()=>{
+            if(playedCardDiv) playedCardDiv.classList.remove("playing");
+        }, 400);
+    }
+
+    // Sound
+    safePlayAudio(playSound, "play");
+
+    setTimeout(()=>{
 
         // ==========================
         // WHOT (20)
