@@ -2079,6 +2079,7 @@ let playerTurn = true;
 let gameOver = false;
 
 let isOpponentThinking = false;
+let isPlayerActionPending = false;
 let requestedShape = null;
 let pickTwoActive = false;
 let generalMarketActive = false;
@@ -2288,6 +2289,7 @@ function startGame(){
     gameOver=false;
 
     isOpponentThinking = false;
+    isPlayerActionPending = false;
 
     requestedShape=null;
 
@@ -2336,6 +2338,8 @@ function startOnlineGame(){
     clearInterval(timer);
 
     gameOver = false;
+    isOpponentThinking = false;
+    isPlayerActionPending = false;
     requestedShape = null;
 
     // Player 1 starts
@@ -2745,9 +2749,7 @@ function canPlay(card){
 
 function playCard(index){
 
-    if(!playerTurn) return;
-
-    if(gameOver) return;
+    if(!playerTurn || gameOver || isPlayerActionPending) return;
 
     const card = playerHand[index];
 
@@ -2762,13 +2764,19 @@ function playCard(index){
 
     }
 
+    isPlayerActionPending = true;
     clearInterval(timer);
 
     // =============================================
-    // IMMEDIATELY REMOVE CARD AND UPDATE HAND COUNT
+    // LOCATE EXACT CARD IN HAND & REMOVE EXACTLY ONCE
     // =============================================
-    playerHand.splice(index, 1);
+    const actualIndex = playerHand.indexOf(card);
+    if(actualIndex === -1){
+        isPlayerActionPending = false;
+        return;
+    }
 
+    playerHand.splice(actualIndex, 1);
     topCard = card;
 
     if(card.number !== 20){
@@ -2806,6 +2814,8 @@ function playCard(index){
 
         checkWinner();
 
+        isPlayerActionPending = false;
+
         if(gameOver){
 
             syncOnlineGame();
@@ -2816,12 +2826,7 @@ function playCard(index){
 
         safePlayAudio(specialSound, "special");
 
-        // ==========================
-        // ONLINE MODE
-        // Wait for this player
-        // to choose the shape.
-        // ==========================
-
+        // Wait for player to choose shape
         shapeChooser.classList.remove("hidden");
 
         syncOnlineGame();
@@ -2830,156 +2835,15 @@ function playCard(index){
 
     }
 
-// ==========================
-// HOLD ON (1)
-// Player plays again
-// ==========================
+    // ==========================
+    // HOLD ON (1) - Player plays again
+    // ==========================
 
-if(card.number === 1){
-
-    checkWinner();
-
-    if(gameOver){
-
-        syncOnlineGame();
-
-        return;
-
-    }
-
-    messageText.textContent =
-        onlineMode
-        ? "Hold On! Play again."
-        : "Hold On! Play again.";
-
-    playerTurn = true;
-
-    updateBoard();
-
-    startTimer();
-
-    syncOnlineGame();
-
-    return;
-
-}
-        // ==========================
-        // PICK TWO (2)
-        // ==========================
-
-        if(card.number === 2){
-
-            const c1 = drawCard();
-            const c2 = drawCard();
-
-            if(c1) opponentHand.push(c1);
-            if(c2) opponentHand.push(c2);
-
-            messageText.textContent =
-                onlineMode
-                ? "Opponent picked two cards."
-                : "Computer picked two cards.";
-
-            checkWinner();
-
-            if(gameOver){
-
-                syncOnlineGame();
-
-                return;
-
-            }
-
-            playerTurn = true;
-
-            updateBoard();
-
-            startTimer();
-
-            syncOnlineGame();
-
-            return;
-
-        }
-
-
-        // ==========================
-        // SUSPENSION (8)
-        // Player plays again
-        // ==========================
-
-        if(card.number === 8){
-
-            checkWinner();
-
-            if(gameOver){
-
-                syncOnlineGame();
-
-                return;
-
-            }
-
-            playerTurn = true;
-
-            updateBoard();
-
-            startTimer();
-
-            syncOnlineGame();
-
-            return;
-
-        }
-
-
-        // ==========================
-        // GENERAL MARKET (14)
-        // ==========================
-
-        if(card.number === 14){
-
-            const cardDrawn = drawCard();
-
-            if(cardDrawn){
-
-                opponentHand.push(cardDrawn);
-
-            }
-
-            messageText.textContent =
-                onlineMode
-                ? "Opponent picked one card."
-                : "Computer picked one card.";
-
-            checkWinner();
-
-            if(gameOver){
-
-                syncOnlineGame();
-
-                return;
-
-            }
-
-            playerTurn = true;
-
-            updateBoard();
-
-            startTimer();
-
-            syncOnlineGame();
-
-            return;
-
-        }
-
-
-        // ==========================
-        // NORMAL CARD
-        // ==========================
+    if(card.number === 1){
 
         checkWinner();
+
+        isPlayerActionPending = false;
 
         if(gameOver){
 
@@ -2989,31 +2853,161 @@ if(card.number === 1){
 
         }
 
-        // ==========================
-        // NEXT PLAYER
-        // ==========================
+        messageText.textContent = "Hold On! Play again.";
 
-        playerTurn = false;
+        playerTurn = true;
 
         updateBoard();
 
-        // ==========================
-        // SAVE ONLINE GAME
-        // ==========================
+        startTimer();
 
         syncOnlineGame();
 
-        // ==========================
-        // COMPUTER MODE ONLY
-        // ==========================
+        return;
 
-        if(!onlineMode){
+    }
 
-            setTimeout(opponentPlay,800);
+    // ==========================
+    // PICK TWO (2) - Opponent picks 2 cards
+    // ==========================
+
+    if(card.number === 2){
+
+        const c1 = drawCard();
+        const c2 = drawCard();
+
+        if(c1) opponentHand.push(c1);
+        if(c2) opponentHand.push(c2);
+
+        messageText.textContent =
+            onlineMode
+            ? "Opponent picked two cards."
+            : "Computer picked two cards.";
+
+        checkWinner();
+
+        isPlayerActionPending = false;
+
+        if(gameOver){
+
+            syncOnlineGame();
+
+            return;
 
         }
 
-    },450);
+        playerTurn = true;
+
+        updateBoard();
+
+        startTimer();
+
+        syncOnlineGame();
+
+        return;
+
+    }
+
+    // ==========================
+    // SUSPENSION (8) - Player plays again
+    // ==========================
+
+    if(card.number === 8){
+
+        checkWinner();
+
+        isPlayerActionPending = false;
+
+        if(gameOver){
+
+            syncOnlineGame();
+
+            return;
+
+        }
+
+        playerTurn = true;
+
+        updateBoard();
+
+        startTimer();
+
+        syncOnlineGame();
+
+        return;
+
+    }
+
+    // ==========================
+    // GENERAL MARKET (14) - Opponent picks 1 card
+    // ==========================
+
+    if(card.number === 14){
+
+        const cardDrawn = drawCard();
+
+        if(cardDrawn){
+
+            opponentHand.push(cardDrawn);
+
+        }
+
+        messageText.textContent =
+            onlineMode
+            ? "Opponent picked one card."
+            : "Computer picked one card.";
+
+        checkWinner();
+
+        isPlayerActionPending = false;
+
+        if(gameOver){
+
+            syncOnlineGame();
+
+            return;
+
+        }
+
+        playerTurn = true;
+
+        updateBoard();
+
+        startTimer();
+
+        syncOnlineGame();
+
+        return;
+
+    }
+
+    // ==========================
+    // NORMAL CARD - Switch turn
+    // ==========================
+
+    checkWinner();
+
+    isPlayerActionPending = false;
+
+    if(gameOver){
+
+        syncOnlineGame();
+
+        return;
+
+    }
+
+    playerTurn = false;
+
+    updateBoard();
+
+    syncOnlineGame();
+
+    if(!onlineMode){
+
+        setTimeout(opponentPlay, 800);
+
+    }
 
 }
 // =====================================
@@ -3023,11 +3017,10 @@ if(card.number === 1){
 
 function pickCard(){
 
-    if(!playerTurn) return;
-
-    if(gameOver) return;
+    if(!playerTurn || gameOver || isPlayerActionPending) return;
 
     clearInterval(timer);
+    isPlayerActionPending = true;
 
     const card = drawCard();
 
@@ -3041,73 +3034,33 @@ function pickCard(){
 
         }
 
+        isPlayerActionPending = false;
         return;
 
     }
 
-    // ==========================
-    // ANIMATE MARKET CARD
-    // ==========================
-
-    const marketElement = marketCardDiv;
-
-    if(marketElement){
-
-        marketElement.classList.add("drawing");
-
+    // =============================================
+    // ANIMATE MARKET CARD DRAWING TO PLAYER HAND
+    // =============================================
+    if(marketCardDiv){
+        marketCardDiv.classList.add("drawing");
+        setTimeout(()=>{
+            if(marketCardDiv) marketCardDiv.classList.remove("drawing");
+        }, 380);
     }
 
-    setTimeout(()=>{
+    playerHand.push(card);
+    safePlayAudio(shuffleSound, "draw");
+    updateBoard();
 
-        // ==========================
-        // ADD CARD TO PLAYER HAND
-        // ==========================
+    // ==========================
+    // PICK TWO / GENERAL MARKET PENALTY
+    // ==========================
 
-        playerHand.push(card);
+    if(pickTwoActive || generalMarketActive){
 
-        // ==========================
-        // REMOVE ANIMATION
-        // ==========================
-
-        if(marketElement){
-
-            marketElement.classList.remove("drawing");
-
-        }
-
-        updateBoard();
-
-        // ==========================
-        // PICK TWO / GENERAL MARKET
-        // ==========================
-
-        if(pickTwoActive || generalMarketActive){
-
-            pickTwoActive = false;
-            generalMarketActive = false;
-
-            playerTurn = false;
-
-            clearInterval(timer);
-
-            updateBoard();
-
-            syncOnlineGame();
-
-            // Computer mode only
-            if(!onlineMode){
-
-                setTimeout(opponentPlay,800);
-
-            }
-
-            return;
-
-        }
-
-        // ==========================
-        // NORMAL MARKET PICK
-        // ==========================
+        pickTwoActive = false;
+        generalMarketActive = false;
 
         playerTurn = false;
 
@@ -3115,23 +3068,39 @@ function pickCard(){
 
         updateBoard();
 
-        // ==========================
-        // SAVE ONLINE GAME
-        // ==========================
-
         syncOnlineGame();
 
-        // ==========================
-        // COMPUTER MODE ONLY
-        // ==========================
+        isPlayerActionPending = false;
 
         if(!onlineMode){
 
-            setTimeout(opponentPlay,800);
+            setTimeout(opponentPlay, 800);
 
         }
 
-    },450);
+        return;
+
+    }
+
+    // ==========================
+    // NORMAL MARKET PICK
+    // ==========================
+
+    playerTurn = false;
+
+    clearInterval(timer);
+
+    updateBoard();
+
+    syncOnlineGame();
+
+    isPlayerActionPending = false;
+
+    if(!onlineMode){
+
+        setTimeout(opponentPlay, 800);
+
+    }
 
 }
 // =====================================
@@ -3204,29 +3173,27 @@ function opponentPlay(){
 
     clearInterval(timer);
 
-    // Find all playable cards
-    let playableCards = opponentHand.filter(card => canPlay(card));
+    // 1. Identify playable cards from current hand
+    let playable = opponentHand.filter(card => canPlay(card));
+    let chosenCard = null;
 
-    let chosenCard =
-        playableCards.find(card => card.number === 2) ||
-        playableCards.find(card => card.number === 8) ||
-        playableCards.find(card => card.number === 20) ||
-        playableCards.find(card => card.number === 14) ||
-        playableCards[0];
+    if(playable.length > 0){
 
-    let index = opponentHand.indexOf(chosenCard);
+        chosenCard =
+            playable.find(card => card.number === 2) ||
+            playable.find(card => card.number === 8) ||
+            playable.find(card => card.number === 20) ||
+            playable.find(card => card.number === 14) ||
+            playable[0];
 
-    // ==========================
-    // NO PLAYABLE CARD
-    // ==========================
+    } else {
 
-    if(index === -1){
-
+        // Draw card from market
         const newCard = drawCard();
 
         if(newCard){
 
-            // Animate market card moving to computer hand
+            // Animate market card flying to computer hand
             if(marketCardDiv){
                 marketCardDiv.classList.add("drawing-opponent");
                 setTimeout(()=>{
@@ -3239,18 +3206,11 @@ function opponentPlay(){
             displayOpponentCards();
             displayMarket();
 
-            playableCards = opponentHand.filter(card => canPlay(card));
+            if(canPlay(newCard)){
+                chosenCard = newCard;
+            }
 
-            chosenCard =
-                playableCards.find(card => card.number === 2) ||
-                playableCards.find(card => card.number === 8) ||
-                playableCards.find(card => card.number === 20) ||
-                playableCards.find(card => card.number === 14) ||
-                playableCards[0];
-
-            index = opponentHand.indexOf(chosenCard);
-
-        }else{
+        } else {
 
             checkMarketWinner();
 
@@ -3266,24 +3226,25 @@ function opponentPlay(){
 
         }
 
-        if(index === -1){
+    }
 
-            updateBoard();
+    // If still no card can be played, switch turn to player
+    if(!chosenCard){
 
-            isOpponentThinking = false;
+        updateBoard();
 
-            playerTurn = true;
+        isOpponentThinking = false;
 
-            startTimer();
+        playerTurn = true;
 
-            return;
+        startTimer();
 
-        }
+        return;
 
     }
 
-    // Strictly verify chosen card is present in computer hand
-    const actualIndex = opponentHand.findIndex(c => c && c.shape === chosenCard.shape && c.number === chosenCard.number);
+    // Strictly verify that chosenCard is present in opponentHand
+    const actualIndex = opponentHand.indexOf(chosenCard);
 
     if(actualIndex === -1 || gameOver){
 
@@ -3324,148 +3285,141 @@ function opponentPlay(){
     // Sound
     safePlayAudio(playSound, "play");
 
-    setTimeout(()=>{
+    // ==========================
+    // WHOT (20)
+    // ==========================
 
-        // ==========================
-        // WHOT (20)
-        // ==========================
+    if(card.number === 20){
 
-        if(card.number === 20){
+        const shapes = [
+            "circle",
+            "triangle",
+            "cross",
+            "square"
+        ];
 
-            const shapes = [
-                "circle",
-                "triangle",
-                "cross",
-                "square"
-            ];
+        requestedShape =
+            shapes[Math.floor(Math.random()*shapes.length)];
 
-            requestedShape =
-                shapes[Math.floor(Math.random()*shapes.length)];
+        messageText.textContent =
+            "Computer requested " +
+            requestedShape.toUpperCase();
 
-            messageText.textContent =
-                "Computer requested " +
-                requestedShape.toUpperCase();
+    }
 
-        }
+    // ==========================
+    // HOLD ON (1)
+    // ==========================
 
-        // ==========================
-        // HOLD ON (1)
-        // ==========================
+    if(card.number === 1){
 
-        if(card.number === 1){
-
-            updateBoard();
-
-            checkWinner();
-
-            isOpponentThinking = false;
-
-            if(!gameOver){
-
-                setTimeout(opponentPlay, 800);
-
-            }
-
-            return;
-
-        }
-
-        // ==========================
-        // PICK TWO (2)
-        // ==========================
-
-        if(card.number === 2){
-
-            const c1 = drawCard();
-
-            const c2 = drawCard();
-
-            if(c1) playerHand.push(c1);
-
-            if(c2) playerHand.push(c2);
-
-            messageText.textContent =
-                "You picked two cards.";
-
-            updateBoard();
-
-            isOpponentThinking = false;
-
-            // Computer continues playing
-            setTimeout(opponentPlay, 800);
-
-            return;
-
-        }
-
-        // ==========================
-        // SUSPENSION (8)
-        // ==========================
-
-        if(card.number === 8){
-
-            updateBoard();
-
-            checkWinner();
-
-            isOpponentThinking = false;
-
-            if(!gameOver){
-
-                setTimeout(opponentPlay, 800);
-
-            }
-
-            return;
-
-        }
-
-        // ==========================
-        // GENERAL MARKET (14)
-        // ==========================
-
-        if(card.number === 14){
-
-            const newCard = drawCard();
-
-            if(newCard){
-
-                playerHand.push(newCard);
-
-            }
-
-            messageText.textContent =
-                "You picked one card.";
-
-            updateBoard();
-
-            isOpponentThinking = false;
-
-            // Computer continues playing
-            setTimeout(opponentPlay, 800);
-
-            return;
-
-        }
-
-        // ==========================
-        // NORMAL CARD
-        // Player's turn
-        // ==========================
+        updateBoard();
 
         checkWinner();
 
         isOpponentThinking = false;
 
-        if(gameOver) return;
+        if(!gameOver){
+
+            setTimeout(opponentPlay, 800);
+
+        }
+
+        return;
+
+    }
+
+    // ==========================
+    // PICK TWO (2)
+    // ==========================
+
+    if(card.number === 2){
+
+        const c1 = drawCard();
+
+        const c2 = drawCard();
+
+        if(c1) playerHand.push(c1);
+
+        if(c2) playerHand.push(c2);
+
+        messageText.textContent =
+            "You picked two cards.";
 
         updateBoard();
 
-        playerTurn = true;
+        isOpponentThinking = false;
 
-        startTimer();
+        setTimeout(opponentPlay, 800);
 
-    }, 450);
+        return;
+
+    }
+
+    // ==========================
+    // SUSPENSION (8)
+    // ==========================
+
+    if(card.number === 8){
+
+        updateBoard();
+
+        checkWinner();
+
+        isOpponentThinking = false;
+
+        if(!gameOver){
+
+            setTimeout(opponentPlay, 800);
+
+        }
+
+        return;
+
+    }
+
+    // ==========================
+    // GENERAL MARKET (14)
+    // ==========================
+
+    if(card.number === 14){
+
+        const newCard = drawCard();
+
+        if(newCard){
+
+            playerHand.push(newCard);
+
+        }
+
+        messageText.textContent =
+            "You picked one card.";
+
+        updateBoard();
+
+        isOpponentThinking = false;
+
+        setTimeout(opponentPlay, 800);
+
+        return;
+
+    }
+
+    // ==========================
+    // NORMAL CARD - Player's turn
+    // ==========================
+
+    checkWinner();
+
+    isOpponentThinking = false;
+
+    if(gameOver) return;
+
+    updateBoard();
+
+    playerTurn = true;
+
+    startTimer();
 
 }
 // =====================================
