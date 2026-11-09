@@ -2482,11 +2482,6 @@ function createCard(card, hidden = false){
 
     div.className = "card";
 
-    div.style.width = "70px";
-    div.style.height = "100px";
-    div.style.display = "block";
-    div.style.flexShrink = "0";
-
     const img = document.createElement("img");
 
     img.style.width = "100%";
@@ -2495,91 +2490,75 @@ function createCard(card, hidden = false){
     img.style.display = "block";
     img.style.borderRadius = "10px";
 
-
-    // ==========================
-    // HIDDEN CARD
-    // ==========================
-
-    if(hidden){
-
-        img.src = "./assets/cards/back.png";
-
-        img.onerror = function(){
-
-            img.onerror = null;
-            img.src = "./back.png";
-
-        };
-
+    // Graceful final fallback helper
+    function handleFinalError(){
+        img.onerror = null;
+        console.warn("❌ Card image not found:", card, "hidden:", hidden);
+        img.style.display = "none";
+        div.textContent = card ? `${card.shape.toUpperCase()} ${card.number}` : "CARD";
+        div.style.display = "flex";
+        div.style.alignItems = "center";
+        div.style.justifyContent = "center";
+        div.style.fontWeight = "bold";
+        div.style.color = "#d4af37";
+        div.style.background = "#072b1d";
     }
 
+    // Helper to configure primary and secondary fallback paths
+    function setupCardImage(primarySrc, fallbackSrc, altText){
+        img.alt = altText;
+        img.onerror = function(){
+            if(fallbackSrc && img.src !== fallbackSrc){
+                img.onerror = handleFinalError;
+                img.src = fallbackSrc;
+            } else {
+                handleFinalError();
+            }
+        };
+        img.src = primarySrc;
+    }
+
+    // ==========================
+    // HIDDEN CARD (CARD BACK)
+    // ==========================
+    if(hidden){
+        setupCardImage(
+            "./assets/cards/back.png",
+            "./back.png",
+            "Card Back"
+        );
+    }
 
     // ==========================
     // WHOT 20
     // ==========================
-
     else if(card && card.number === 20){
-
-        img.src = "./assets/cards/whot/whot20.png";
-
-        img.onerror = function(){
-
-            img.onerror = null;
-            img.src = "./whot20.png";
-
-        };
-
-    }
-
-
-    // ==========================
-    // NORMAL CARD
-    // ==========================
-
-    else if(card){
-
-        // First: Acode structure
-        img.src =
-            `./assets/cards/${card.shape}/${card.shape}${card.number}.png`;
-
-        // If Acode path doesn't exist,
-        // try GitHub structure
-        img.onerror = function(){
-
-            img.onerror = null;
-
-            img.src =
-                `./${card.shape}${card.number}.png`;
-
-        };
-
-    }
-
-
-    // ==========================
-    // FINAL IMAGE ERROR
-    // ==========================
-
-    img.onerror = function(){
-
-        console.log(
-            "❌ Card image not found:",
-            card
+        setupCardImage(
+            "./assets/cards/whot/whot20.png",
+            "./whot20.png",
+            "Whot 20"
         );
+    }
 
-        img.style.display = "none";
+    // ==========================
+    // NORMAL NUMBERED CARD
+    // ==========================
+    else if(card && card.shape && card.number !== undefined){
+        const shape = String(card.shape).toLowerCase();
+        const num = card.number;
+        setupCardImage(
+            `./assets/cards/${shape}/${shape}${num}.png`,
+            `./${shape}${num}.png`,
+            `${shape} ${num}`
+        );
+    }
 
-        div.textContent =
-            card
-            ? `${card.shape} ${card.number}`
-            : "CARD";
-
-        div.style.display = "flex";
-        div.style.alignItems = "center";
-        div.style.justifyContent = "center";
-
-    };
-
+    // ==========================
+    // UNKNOWN / EMPTY CARD
+    // ==========================
+    else {
+        handleFinalError();
+    }
 
     div.appendChild(img);
 
