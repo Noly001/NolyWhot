@@ -42,66 +42,6 @@ body {
     100% { transform: translateX(100%); }
 }
 
-@keyframes playCardToCenter {
-    0% {
-        transform: translateY(0) scale(1);
-        opacity: 1;
-    }
-    40% {
-        transform: translateY(-60px) scale(1.15) rotate(-3deg);
-        box-shadow: 0 10px 30px rgba(244, 215, 122, 0.7);
-    }
-    100% {
-        transform: translateY(-130px) scale(1.05);
-        opacity: 0.95;
-    }
-}
-
-@keyframes opponentPlayToCenter {
-    0% {
-        transform: translateY(0) scale(1);
-        opacity: 1;
-    }
-    40% {
-        transform: translateY(60px) scale(1.15) rotate(3deg);
-        box-shadow: 0 10px 30px rgba(244, 215, 122, 0.7);
-    }
-    100% {
-        transform: translateY(130px) scale(1.05);
-        opacity: 0.95;
-    }
-}
-
-@keyframes drawCardFromMarket {
-    0% {
-        transform: scale(1) translate(0, 0);
-        opacity: 1;
-    }
-    50% {
-        transform: scale(1.12) translate(-20px, 40px);
-        box-shadow: 0 8px 25px rgba(46, 204, 113, 0.6);
-    }
-    100% {
-        transform: scale(1) translate(-40px, 90px);
-        opacity: 0.9;
-    }
-}
-
-@keyframes opponentDrawFromMarket {
-    0% {
-        transform: scale(1) translate(0, 0);
-        opacity: 1;
-    }
-    50% {
-        transform: scale(1.12) translate(-20px, -40px);
-        box-shadow: 0 8px 25px rgba(46, 204, 113, 0.6);
-    }
-    100% {
-        transform: scale(1) translate(-40px, -90px);
-        opacity: 0.9;
-    }
-}
-
 @keyframes resultPop {
     0% { transform: scale(0.85); opacity: 0; }
     100% { transform: scale(1); opacity: 1; }
@@ -113,24 +53,12 @@ body {
     100% { box-shadow: 0 0 12px rgba(244, 215, 122, 0.2); }
 }
 
-.playing {
-    animation: playCardToCenter 0.38s cubic-bezier(0.2, 0.8, 0.25, 1) forwards !important;
-    z-index: 999 !important;
-}
-
-#opponentHand .card.playing {
-    animation: opponentPlayToCenter 0.38s cubic-bezier(0.2, 0.8, 0.25, 1) forwards !important;
-    z-index: 999 !important;
-}
-
-.drawing {
-    animation: drawCardFromMarket 0.38s cubic-bezier(0.2, 0.8, 0.25, 1) forwards !important;
-    z-index: 999 !important;
-}
-
-.drawing-opponent {
-    animation: opponentDrawFromMarket 0.38s cubic-bezier(0.2, 0.8, 0.25, 1) forwards !important;
-    z-index: 999 !important;
+/* Flying card dynamic animation clone styling */
+.flying-card {
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.65), 0 0 18px rgba(244, 215, 122, 0.45) !important;
+    border-radius: 10px !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
 }
 
 /* ==========================================
