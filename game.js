@@ -2599,6 +2599,60 @@ function updateScores(){
 }
 
 // =====================================
+// ANIMATE FLYING CARD BETWEEN ELEMENTS
+// =====================================
+
+function animateFlyingCard(cardData, startEl, endEl, isHidden = false, onComplete = null){
+
+    if(!startEl || !endEl || typeof window === "undefined" || !document.body){
+        if(onComplete) onComplete();
+        return;
+    }
+
+    const startRect = startEl.getBoundingClientRect();
+    const endRect = endEl.getBoundingClientRect();
+
+    if(startRect.width === 0 || endRect.width === 0){
+        if(onComplete) onComplete();
+        return;
+    }
+
+    const fly = createCard(cardData, isHidden);
+    fly.classList.add("flying-card");
+
+    fly.style.position = "fixed";
+    fly.style.left = `${startRect.left}px`;
+    fly.style.top = `${startRect.top}px`;
+    fly.style.width = `${startRect.width}px`;
+    fly.style.height = `${startRect.height}px`;
+    fly.style.margin = "0";
+    fly.style.zIndex = "999999";
+    fly.style.pointerEvents = "none";
+    fly.style.transition = "transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.35s ease";
+    fly.style.transform = "translate3d(0, 0, 0)";
+    fly.style.willChange = "transform";
+
+    document.body.appendChild(fly);
+
+    const deltaX = (endRect.left + (endRect.width - startRect.width) / 2) - startRect.left;
+    const deltaY = (endRect.top + (endRect.height - startRect.height) / 2) - startRect.top;
+
+    requestAnimationFrame(()=>{
+        requestAnimationFrame(()=>{
+            fly.style.transform = `translate3d(${deltaX}px, ${deltaY}px, 0)`;
+        });
+    });
+
+    setTimeout(()=>{
+        if(fly && fly.parentNode){
+            fly.parentNode.removeChild(fly);
+        }
+        if(onComplete) onComplete();
+    }, 360);
+
+}
+
+// =====================================
 // DISPLAY PLAYER
 // =====================================
 
@@ -2776,6 +2830,15 @@ function playCard(index){
         return;
     }
 
+    // Capture the clicked DOM element position before rerender
+    const sourceCardEl = playerHandDiv && playerHandDiv.children[actualIndex]
+        ? playerHandDiv.children[actualIndex]
+        : playerHandDiv;
+
+    // Trigger smooth flying card from player hand to center discard pile
+    // The center discard pile remains completely stationary
+    animateFlyingCard(card, sourceCardEl, playedCardDiv, false);
+
     playerHand.splice(actualIndex, 1);
     topCard = card;
 
@@ -2786,18 +2849,6 @@ function playCard(index){
     // Refresh hand count and card visual immediately
     displayPlayerCards();
     displayPlayedCard();
-
-    // =============================================
-    // ANIMATE PLAYED CARD FLYING TO CENTER TABLE
-    // =============================================
-    if(playedCardDiv){
-        playedCardDiv.classList.remove("playing");
-        void playedCardDiv.offsetWidth;
-        playedCardDiv.classList.add("playing");
-        setTimeout(()=>{
-            if(playedCardDiv) playedCardDiv.classList.remove("playing");
-        }, 400);
-    }
 
     // Sound
     safePlayAudio(playSound, "play");
@@ -3040,14 +3091,10 @@ function pickCard(){
     }
 
     // =============================================
-    // ANIMATE MARKET CARD DRAWING TO PLAYER HAND
+    // ANIMATE SINGLE MARKET CARD DRAWING TO PLAYER HAND
     // =============================================
-    if(marketCardDiv){
-        marketCardDiv.classList.add("drawing");
-        setTimeout(()=>{
-            if(marketCardDiv) marketCardDiv.classList.remove("drawing");
-        }, 380);
-    }
+    // The market deck remains completely stationary while one card glides into the hand
+    animateFlyingCard(null, marketCardDiv, playerHandDiv, true);
 
     playerHand.push(card);
     safePlayAudio(shuffleSound, "draw");
@@ -3193,13 +3240,8 @@ function opponentPlay(){
 
         if(newCard){
 
-            // Animate market card flying to computer hand
-            if(marketCardDiv){
-                marketCardDiv.classList.add("drawing-opponent");
-                setTimeout(()=>{
-                    if(marketCardDiv) marketCardDiv.classList.remove("drawing-opponent");
-                }, 380);
-            }
+            // Animate single card flying from market to opponent hand (market stays stationary)
+            animateFlyingCard(null, marketCardDiv, opponentHandDiv, true);
 
             opponentHand.push(newCard);
             safePlayAudio(shuffleSound, "draw");
@@ -3260,8 +3302,16 @@ function opponentPlay(){
 
     }
 
+    // Capture opponent card source element before splice
+    const oppSourceEl = opponentHandDiv && opponentHandDiv.children[actualIndex]
+        ? opponentHandDiv.children[actualIndex]
+        : opponentHandDiv;
+
     // Immediately remove card from computer hand and update hand count
     const card = opponentHand.splice(actualIndex, 1)[0];
+
+    // Animate card smoothly flying from opponent hand down to stationary center table
+    animateFlyingCard(card, oppSourceEl, playedCardDiv, false);
 
     topCard = card;
 
@@ -3271,16 +3321,6 @@ function opponentPlay(){
 
     displayOpponentCards();
     displayPlayedCard();
-
-    // Animate played card moving to center table
-    if(playedCardDiv){
-        playedCardDiv.classList.remove("playing");
-        void playedCardDiv.offsetWidth;
-        playedCardDiv.classList.add("playing");
-        setTimeout(()=>{
-            if(playedCardDiv) playedCardDiv.classList.remove("playing");
-        }, 400);
-    }
 
     // Sound
     safePlayAudio(playSound, "play");
