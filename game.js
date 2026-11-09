@@ -2047,6 +2047,20 @@ function toggleMute() {
     }
 }
 window.toggleMute = toggleMute;
+window.__NOLYWHOT_TEST__ = {
+    getDeck: () => deck,
+    setDeck: (d) => { deck = d; },
+    getPlayerHand: () => playerHand,
+    setPlayerHand: (h) => { playerHand = h; },
+    getOpponentHand: () => opponentHand,
+    setOpponentHand: (h) => { opponentHand = h; },
+    setPlayerTurn: (t) => { playerTurn = t; },
+    setGameOver: (g) => { gameOver = g; },
+    checkMarketWinner: () => checkMarketWinner(),
+    canPlay: (c) => canPlay(c),
+    pickCard: () => pickCard(),
+    updateBoard: () => updateBoard()
+};
 
 document.addEventListener("DOMContentLoaded", () => {
     const soundBtn = document.getElementById("soundToggleButton");
@@ -2274,7 +2288,17 @@ function drawCard(){
 
     }
 
-    return deck.pop();
+    const drawnCard = deck.pop();
+
+    if(deck.length === 0){
+        setTimeout(()=>{
+            if(!gameOver){
+                checkMarketWinner();
+            }
+        }, 0);
+    }
+
+    return drawnCard;
 
 }
 
@@ -2755,6 +2779,12 @@ function updateBoard(){
 
 function canPlay(card){
 
+    if(gameOver || deck.length === 0){
+
+        return false;
+
+    }
+
     if(card.number === 20){
 
         return true;
@@ -2782,7 +2812,7 @@ function canPlay(card){
 
 function playCard(index){
 
-    if(!playerTurn || gameOver || isPlayerActionPending) return;
+    if(!playerTurn || gameOver || deck.length === 0 || isPlayerActionPending) return;
 
     const card = playerHand[index];
 
@@ -3049,6 +3079,14 @@ function pickCard(){
 
     if(!playerTurn || gameOver || isPlayerActionPending) return;
 
+    if(deck.length === 0){
+        checkMarketWinner();
+        if(onlineMode){
+            syncOnlineGame();
+        }
+        return;
+    }
+
     clearInterval(timer);
     isPlayerActionPending = true;
 
@@ -3190,6 +3228,12 @@ function opponentPlay(){
 
     if(gameOver || onlineMode || playerTurn) {
         isOpponentThinking = false;
+        return;
+    }
+
+    if(deck.length === 0){
+        isOpponentThinking = false;
+        checkMarketWinner();
         return;
     }
 
@@ -3611,50 +3655,7 @@ function checkWinner(){
 
 function checkMarketWinner(){
 
-    // =================================
-    // CHECK IF PLAYER CAN STILL PLAY
-    // =================================
-
-    if(playerHand.some(card => canPlay(card))){
-
-        return;
-
-    }
-
-
-    // =================================
-    // CHECK IF OPPONENT CAN STILL PLAY
-    // =================================
-
-    if(opponentHand.some(card => canPlay(card))){
-
-        return;
-
-    }
-
-
-    // =================================
-    // CALCULATE CARD TOTALS
-    // =================================
-
-    let playerTotal = 0;
-
-    let opponentTotal = 0;
-
-
-    playerHand.forEach(card => {
-
-        playerTotal += card.number;
-
-    });
-
-
-    opponentHand.forEach(card => {
-
-        opponentTotal += card.number;
-
-    });
-
+    if(gameOver) return;
 
     // =================================
     // GAME OVER
@@ -3663,7 +3664,34 @@ function checkMarketWinner(){
     gameOver = true;
 
     clearInterval(timer);
+    isPlayerActionPending = false;
+    isOpponentThinking = false;
 
+    // Close Whot shape chooser modal if active
+    if(shapeChooser && !shapeChooser.classList.contains("hidden")){
+        shapeChooser.classList.add("hidden");
+    }
+
+    // =================================
+    // CALCULATE CARD TOTALS
+    // =================================
+
+    let playerTotal = 0;
+    let opponentTotal = 0;
+
+    playerHand.forEach(card => {
+        if(card && typeof card.number === "number"){
+            playerTotal += card.number;
+        }
+    });
+
+    opponentHand.forEach(card => {
+        if(card && typeof card.number === "number"){
+            opponentTotal += card.number;
+        }
+    });
+
+    updateBoard();
 
     // =================================
     // PLAYER WINS
@@ -3672,32 +3700,26 @@ function checkMarketWinner(){
     if(playerTotal < opponentTotal){
 
         playerScore++;
-
         updateScores();
-
+        safePlayAudio(winSound, "win");
 
         if(onlineMode){
-
             gameResult.textContent =
                 "🎉 YOU WIN!\n" +
                 "Your Total: " +
                 playerTotal +
                 " | Opponent Total: " +
                 opponentTotal;
-
         }else{
-
             gameResult.textContent =
                 "🎉 YOU WIN!\n" +
                 "Your Total: " +
                 playerTotal +
                 " | Computer Total: " +
                 opponentTotal;
-
         }
 
     }
-
 
     // =================================
     // OPPONENT WINS
@@ -3706,32 +3728,26 @@ function checkMarketWinner(){
     else if(opponentTotal < playerTotal){
 
         opponentScore++;
-
         updateScores();
-
+        safePlayAudio(loseSound, "lose");
 
         if(onlineMode){
-
             gameResult.textContent =
                 "😢 YOU LOSE!\n" +
                 "Your Total: " +
                 playerTotal +
                 " | Opponent Total: " +
                 opponentTotal;
-
         }else{
-
             gameResult.textContent =
                 "💻 COMPUTER WINS!\n" +
                 "Your Total: " +
                 playerTotal +
                 " | Computer Total: " +
                 opponentTotal;
-
         }
 
     }
-
 
     // =================================
     // DRAW
@@ -3746,7 +3762,6 @@ function checkMarketWinner(){
 
     }
 
-
     // =================================
     // SHOW RESULT
     // =================================
@@ -3754,7 +3769,6 @@ function checkMarketWinner(){
     gameOverScreen.classList.remove(
         "hidden"
     );
-
 
     // =================================
     // SYNC ONLINE RESULT
