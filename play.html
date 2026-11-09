@@ -16,6 +16,32 @@ content="width=device-width, initial-scale=1.0, user-scalable=no">
 
 <body>
 <!-- ===========================
+     LUXURY SPLASH SCREEN
+=========================== -->
+<div id="splashScreen" style="position: fixed; inset: 0; background: radial-gradient(circle at 50% 30%, #0d5c3a, #032d20 65%, #01140e); z-index: 99999; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: opacity 0.5s ease, visibility 0.5s ease;">
+    <div style="width: 84px; height: 84px; border-radius: 50%; background: linear-gradient(135deg, #fced9e, #d4af37 60%, #9c7818); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 35px rgba(244, 215, 122, 0.45); margin-bottom: 18px;">
+        <span style="font-size: 42px;">👑</span>
+    </div>
+    <h1 style="color: #f4d77a; font-size: 38px; font-weight: 900; letter-spacing: 3px; margin: 0; text-shadow: 0 0 20px rgba(244, 215, 122, 0.4);">NOLYWHOT</h1>
+    <p style="color: #a8c0b0; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin: 8px 0 25px;">V3 Professional Edition</p>
+    <div style="width: 160px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
+        <div style="width: 100%; height: 100%; background: linear-gradient(90deg, #f4d77a, #2ecc71); animation: splashLoad 1.2s infinite ease-in-out;"></div>
+    </div>
+</div>
+<script>
+window.addEventListener("DOMContentLoaded", () => {
+    setTimeout(() => {
+        const s = document.getElementById("splashScreen");
+        if (s) {
+            s.style.opacity = "0";
+            s.style.visibility = "hidden";
+            setTimeout(() => s.remove(), 500);
+        }
+    }, 800);
+});
+</script>
+
+<!-- ===========================
      GAME MODE SELECTION
 =========================== -->
 
