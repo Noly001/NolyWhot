@@ -2059,7 +2059,9 @@ window.__NOLYWHOT_TEST__ = {
     checkMarketWinner: () => checkMarketWinner(),
     canPlay: (c) => canPlay(c),
     pickCard: () => pickCard(),
-    updateBoard: () => updateBoard()
+    updateBoard: () => updateBoard(),
+    opponentPlay: () => opponentPlay(),
+    setRequestedShape: (s) => { requestedShape = s; }
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -2091,6 +2093,8 @@ let topCard = null;
 let playerTurn = true;
 
 let gameOver = false;
+let revealOpponentCards = false;
+let isCountingCards = false;
 
 let isOpponentThinking = false;
 let isPlayerActionPending = false;
@@ -2104,6 +2108,10 @@ let playerScore = 0;
 let opponentScore = 0;
 let currentSticker = null;
 let lastStickerId = null;
+let onlineGameWinner = null;
+let onlinePlayer1Total = null;
+let onlinePlayer2Total = null;
+let onlineResultReason = null;
 // =====================================
 // ONLINE GAME SYNCHRONIZATION
 // =====================================
@@ -2683,10 +2691,11 @@ function displayOpponentCards(){
 
     opponentHandDiv.innerHTML = "";
 
-    opponentHand.forEach(()=>{
+    opponentHand.forEach((card)=>{
 
+        const isHidden = !revealOpponentCards;
         opponentHandDiv.appendChild(
-            createCard(null,true)
+            createCard(isHidden ? null : card, isHidden)
         );
 
     });
@@ -2751,20 +2760,29 @@ function updateBoard(){
 
     if(requestedShape){
 
-        messageText.textContent =
-            "Requested Shape : " +
-            requestedShape.toUpperCase();
+        const s = String(requestedShape).toLowerCase();
+        const symbols = {
+            circle: "⭕",
+            triangle: "🔺",
+            cross: "✖️",
+            square: "⬛",
+            star: "⭐"
+        };
+        const sym = symbols[s] || "🃏";
+        const imgPath = `./assets/cards/${s}/${s}1.png`;
+
+        messageText.innerHTML = `Requested Shape: <span class="shape-symbol-badge"><img src="${imgPath}" alt="${s}" onerror="this.style.display='none'"> <span>${sym} ${s.toUpperCase()}</span></span>`;
 
     }else if(playerTurn){
 
-        messageText.textContent =
+        messageText.innerHTML =
             onlineMode
             ? "Your Turn"
             : "Your Turn";
 
     }else{
 
-        messageText.textContent =
+        messageText.innerHTML =
             onlineMode
             ? "Opponent's Turn"
             : "Computer Thinking...";
@@ -3364,9 +3382,18 @@ function opponentPlay(){
         requestedShape =
             shapes[Math.floor(Math.random()*shapes.length)];
 
-        messageText.textContent =
-            "Computer requested " +
-            requestedShape.toUpperCase();
+        const s = String(requestedShape).toLowerCase();
+        const symbols = {
+            circle: "⭕",
+            triangle: "🔺",
+            cross: "✖️",
+            square: "⬛",
+            star: "⭐"
+        };
+        const sym = symbols[s] || "🃏";
+        const imgPath = `./assets/cards/${s}/${s}1.png`;
+
+        messageText.innerHTML = `Computer requested <span class="shape-symbol-badge"><img src="${imgPath}" alt="${s}" onerror="this.style.display='none'"> <span>${sym} ${s.toUpperCase()}</span></span>`;
 
     }
 
@@ -3653,7 +3680,7 @@ function checkWinner(){
 // MARKET EMPTY WINNER
 // =====================================
 
-function checkMarketWinner(){
+function checkMarketWinner(skipAnimation = false){
 
     if(gameOver) return;
 
@@ -3671,6 +3698,10 @@ function checkMarketWinner(){
     if(shapeChooser && !shapeChooser.classList.contains("hidden")){
         shapeChooser.classList.add("hidden");
     }
+
+    // Reveal opponent cards face-up for all players
+    revealOpponentCards = true;
+    updateBoard();
 
     // =================================
     // CALCULATE CARD TOTALS
@@ -3691,94 +3722,153 @@ function checkMarketWinner(){
         }
     });
 
-    updateBoard();
-
-    // =================================
-    // PLAYER WINS
-    // =================================
-
+    // Determine Authoritative Winner
+    let winner = "draw";
     if(playerTotal < opponentTotal){
-
+        winner = "player";
         playerScore++;
-        updateScores();
-        safePlayAudio(winSound, "win");
-
-        if(onlineMode){
-            gameResult.textContent =
-                "🎉 YOU WIN!\n" +
-                "Your Total: " +
-                playerTotal +
-                " | Opponent Total: " +
-                opponentTotal;
-        }else{
-            gameResult.textContent =
-                "🎉 YOU WIN!\n" +
-                "Your Total: " +
-                playerTotal +
-                " | Computer Total: " +
-                opponentTotal;
-        }
-
-    }
-
-    // =================================
-    // OPPONENT WINS
-    // =================================
-
-    else if(opponentTotal < playerTotal){
-
+    } else if(opponentTotal < playerTotal){
+        winner = "opponent";
         opponentScore++;
-        updateScores();
-        safePlayAudio(loseSound, "lose");
-
-        if(onlineMode){
-            gameResult.textContent =
-                "😢 YOU LOSE!\n" +
-                "Your Total: " +
-                playerTotal +
-                " | Opponent Total: " +
-                opponentTotal;
-        }else{
-            gameResult.textContent =
-                "💻 COMPUTER WINS!\n" +
-                "Your Total: " +
-                playerTotal +
-                " | Computer Total: " +
-                opponentTotal;
-        }
-
     }
 
-    // =================================
-    // DRAW
-    // =================================
-
-    else{
-
-        gameResult.textContent =
-            "🤝 DRAW!\n" +
-            "Both Total: " +
-            playerTotal;
-
-    }
-
-    // =================================
-    // SHOW RESULT
-    // =================================
-
-    gameOverScreen.classList.remove(
-        "hidden"
-    );
-
-    // =================================
-    // SYNC ONLINE RESULT
-    // =================================
+    updateScores();
 
     if(onlineMode){
-
+        onlineGameWinner = winner === "player"
+            ? (onlinePlayerNumber === 1 ? "player1" : "player2")
+            : (winner === "opponent" ? (onlinePlayerNumber === 1 ? "player2" : "player1") : "draw");
+        onlinePlayer1Total = onlinePlayerNumber === 1 ? playerTotal : opponentTotal;
+        onlinePlayer2Total = onlinePlayerNumber === 1 ? opponentTotal : playerTotal;
+        onlineResultReason = "market_depletion";
         syncOnlineGame();
-
     }
+
+    // Prepare Final Result Text
+    const oppLabel = onlineMode ? "Opponent" : "Computer";
+    let finalResultMessage = "";
+    if(winner === "player"){
+        finalResultMessage = "🎉 YOU WIN!\nYour Total: " + playerTotal + " | " + oppLabel + " Total: " + opponentTotal;
+    } else if(winner === "opponent"){
+        finalResultMessage = (onlineMode ? "😢 YOU LOSE!\n" : "💻 COMPUTER WINS!\n") + "Your Total: " + playerTotal + " | " + oppLabel + " Total: " + opponentTotal;
+    } else {
+        finalResultMessage = "🤝 DRAW!\nBoth Total: " + playerTotal;
+    }
+
+    if(skipAnimation){
+        gameResult.textContent = finalResultMessage;
+        if(winner === "player") safePlayAudio(winSound, "win");
+        else if(winner === "opponent") safePlayAudio(loseSound, "lose");
+        gameOverScreen.classList.remove("hidden");
+        return;
+    }
+
+    // =================================
+    // VISIBLE INDIVIDUAL CARD-COUNTING ANIMATION
+    // =================================
+    isCountingCards = true;
+
+    // Create counting overlay with initial 0 totals
+    let countOverlay = document.getElementById("marketCountOverlay");
+    if(!countOverlay){
+        countOverlay = document.createElement("div");
+        countOverlay.id = "marketCountOverlay";
+        document.body.appendChild(countOverlay);
+    }
+
+    countOverlay.innerHTML = `
+        <div class="count-title">Market Empty!</div>
+        <div class="count-stage" id="countStageText">Counting ${oppLabel}'s Hand...</div>
+        <div class="count-card-announce" id="countCardAnnounce">Revealing cards...</div>
+        <div class="count-tally-box">
+            <div class="count-col">
+                <span class="count-col-label">${oppLabel}</span>
+                <span class="count-col-value" id="oppTallyNum">0</span>
+            </div>
+            <div class="count-col">
+                <span class="count-col-label">You</span>
+                <span class="count-col-value" id="playerTallyNum">0</span>
+            </div>
+        </div>
+    `;
+
+    const countStageText = document.getElementById("countStageText");
+    const countCardAnnounce = document.getElementById("countCardAnnounce");
+    const oppTallyNum = document.getElementById("oppTallyNum");
+    const playerTallyNum = document.getElementById("playerTallyNum");
+
+    let oppRunningTotal = 0;
+    let playerRunningTotal = 0;
+
+    // Helper: sequentially count cards of a hand one by one
+    function animateHandCount(handElements, handCards, tallyEl, ownerLabel, onComplete){
+        let idx = 0;
+        function countNext(){
+            if(idx >= handCards.length){
+                if(onComplete) onComplete();
+                return;
+            }
+            const cardEl = handElements[idx];
+            const cardData = handCards[idx];
+            const val = (cardData && typeof cardData.number === "number") ? cardData.number : 0;
+            const shapeName = cardData && cardData.shape ? cardData.shape.toUpperCase() : "CARD";
+
+            // Announce current card being counted
+            if(countCardAnnounce){
+                countCardAnnounce.textContent = `${ownerLabel} Card ${idx + 1}: ${shapeName} ${val} (+${val})`;
+            }
+
+            // Visible forward elevation and golden highlight
+            if(cardEl){
+                cardEl.classList.add("counting-highlight");
+            }
+            safePlayAudio(shuffleSound || playSound, "draw");
+
+            // Increment running total step by step
+            if(tallyEl === oppTallyNum){
+                oppRunningTotal += val;
+                tallyEl.textContent = oppRunningTotal;
+            } else {
+                playerRunningTotal += val;
+                tallyEl.textContent = playerRunningTotal;
+            }
+
+            // Hold highlight so viewer can watch each card counted
+            setTimeout(()=>{
+                if(cardEl){
+                    cardEl.classList.remove("counting-highlight");
+                }
+                idx++;
+                setTimeout(countNext, 250);
+            }, 550);
+        }
+        countNext();
+    }
+
+    // Step 1: Count Opponent's Hand one card after another
+    const oppCardEls = Array.from(opponentHandDiv.children);
+    animateHandCount(oppCardEls, opponentHand, oppTallyNum, oppLabel, ()=>{
+        // Step 2: Count Player's Hand one card after another
+        if(countStageText) countStageText.textContent = "Counting Your Hand...";
+        if(countCardAnnounce) countCardAnnounce.textContent = "Starting your hand...";
+        const playerCardEls = Array.from(playerHandDiv.children);
+        animateHandCount(playerCardEls, playerHand, playerTallyNum, "Your", ()=>{
+            // Step 3: Only after finishing both hands, announce the winner
+            if(countStageText) countStageText.textContent = "All Cards Counted!";
+            if(countCardAnnounce) countCardAnnounce.textContent = "Announcing Winner...";
+            setTimeout(()=>{
+                if(countOverlay && countOverlay.parentNode){
+                    countOverlay.parentNode.removeChild(countOverlay);
+                }
+                isCountingCards = false;
+
+                gameResult.textContent = finalResultMessage;
+                if(winner === "player") safePlayAudio(winSound, "win");
+                else if(winner === "opponent") safePlayAudio(loseSound, "lose");
+                gameOverScreen.classList.remove("hidden");
+            }, 750);
+        });
+    });
 
 }
 

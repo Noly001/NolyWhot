@@ -1081,3 +1081,103 @@ body {
         font-size: 38px;
     }
 }
+
+/* ==========================================
+   MARKET DEPLETION CARD COUNTING ANIMATION
+========================================== */
+
+.counting-highlight {
+    transform: translateY(-22px) scale(1.18) !important;
+    box-shadow: 0 0 30px #ffd700, 0 12px 28px rgba(0, 0, 0, 0.85) !important;
+    border: 3px solid #ffd700 !important;
+    z-index: 9999 !important;
+    transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.28s ease !important;
+    position: relative;
+}
+
+#marketCountOverlay {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(3, 28, 19, 0.96);
+    border: 2px solid var(--gold-primary);
+    border-radius: 18px;
+    padding: 22px 30px;
+    color: var(--gold-primary);
+    box-shadow: 0 10px 35px rgba(0, 0, 0, 0.85), var(--gold-glow);
+    z-index: 9999;
+    text-align: center;
+    min-width: 290px;
+    backdrop-filter: blur(8px);
+}
+
+.count-title {
+    font-size: 15px;
+    font-weight: bold;
+    color: #e0d0a0;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 6px;
+}
+
+.count-stage {
+    font-size: 14px;
+    color: #ffffff;
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.count-card-announce {
+    font-size: 13px;
+    color: #ffd700;
+    font-weight: 700;
+    margin-bottom: 8px;
+    min-height: 18px;
+}
+
+.count-tally-box {
+    display: flex;
+    justify-content: space-around;
+    gap: 15px;
+    margin-top: 10px;
+    border-top: 1px solid rgba(212, 175, 55, 0.3);
+    padding-top: 12px;
+}
+
+.count-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.count-col-label {
+    font-size: 12px;
+    color: #a8c0b0;
+    font-weight: bold;
+}
+
+.count-col-value {
+    font-size: 28px;
+    color: #ffd700;
+    font-weight: 900;
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.6);
+}
+
+.shape-symbol-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    vertical-align: middle;
+}
+
+.shape-symbol-badge img {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    vertical-align: middle;
+}
