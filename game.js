@@ -2187,7 +2187,7 @@ function syncOnlineGame(){
         gameOver: gameOver,
 
         // ==============================
-        // SCORES
+        // SCORES & TERMINAL REASON
         // ==============================
 
         player1Score:
@@ -2198,7 +2198,12 @@ function syncOnlineGame(){
         player2Score:
             onlinePlayerNumber === 1
             ? opponentScore
-            : playerScore
+            : playerScore,
+
+        gameWinner: onlineGameWinner,
+        player1Total: onlinePlayer1Total,
+        player2Total: onlinePlayer2Total,
+        resultReason: onlineResultReason
 
     };
 
@@ -3802,13 +3807,22 @@ function checkMarketWinner(skipAnimation = false){
 
     // Helper: sequentially count cards of a hand one by one
     function animateHandCount(handElements, handCards, tallyEl, ownerLabel, onComplete){
+        if(!handCards || handCards.length === 0){
+            if(tallyEl) tallyEl.textContent = 0;
+            if(countCardAnnounce) countCardAnnounce.textContent = `${ownerLabel} has 0 cards remaining (0 pts)`;
+            setTimeout(()=>{
+                if(onComplete) onComplete();
+            }, 300);
+            return;
+        }
+
         let idx = 0;
         function countNext(){
             if(idx >= handCards.length){
                 if(onComplete) onComplete();
                 return;
             }
-            const cardEl = handElements[idx];
+            const cardEl = handElements && handElements[idx] ? handElements[idx] : null;
             const cardData = handCards[idx];
             const val = (cardData && typeof cardData.number === "number") ? cardData.number : 0;
             const shapeName = cardData && cardData.shape ? cardData.shape.toUpperCase() : "CARD";
