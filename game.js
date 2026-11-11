@@ -3272,12 +3272,24 @@ function opponentPlay(){
 
     if(playable.length > 0){
 
-        chosenCard =
-            playable.find(card => card.number === 2) ||
-            playable.find(card => card.number === 8) ||
-            playable.find(card => card.number === 20) ||
-            playable.find(card => card.number === 14) ||
-            playable[0];
+        // INTELLIGENT AI CARD SELECTION:
+        // Priority 1: Winning card if computer has 1 card left
+        if(opponentHand.length === 1){
+            // Any playable card wins the match!
+            chosenCard = playable[0];
+        } else {
+            // Priority 2: Attack/Penalty cards to disrupt player: 2 (Pick Two), 14 (General Market)
+            // Priority 3: Turn-advantage cards: 8 (Suspension), 1 (Hold On)
+            // Priority 4: Whot 20 (Wildcard)
+            // Priority 5: Shape matching card matching the computer's dominant shape
+            chosenCard =
+                playable.find(card => card.number === 2) ||
+                playable.find(card => card.number === 14) ||
+                playable.find(card => card.number === 8) ||
+                playable.find(card => card.number === 1) ||
+                playable.find(card => card.number === 20) ||
+                playable[0];
+        }
 
     } else {
 
@@ -3356,6 +3368,10 @@ function opponentPlay(){
     // Immediately remove card from computer hand and update hand count
     const card = opponentHand.splice(actualIndex, 1)[0];
 
+    // Synchronously update opponent card UI so count immediately reflects played card
+    displayOpponentCards();
+    updateScores();
+
     // Animate card smoothly flying from opponent hand down to stationary center table
     animateFlyingCard(card, oppSourceEl, playedCardDiv, false);
 
@@ -3365,27 +3381,53 @@ function opponentPlay(){
         requestedShape = null;
     }
 
-    displayOpponentCards();
     displayPlayedCard();
 
     // Sound
     safePlayAudio(playSound, "play");
 
     // ==========================
-    // WHOT (20)
+    // CHECK WINNER IMMEDIATELY IF HAND EMPTY
+    // ==========================
+    if(opponentHand.length === 0){
+        checkWinner();
+        isOpponentThinking = false;
+        return;
+    }
+
+    // ==========================
+    // WHOT (20) - SMART SHAPE SELECTION
     // ==========================
 
     if(card.number === 20){
 
-        const shapes = [
-            "circle",
-            "triangle",
-            "cross",
-            "square"
-        ];
+        // Count shapes among remaining computer cards to choose the best shape
+        const shapeCounts = {
+            circle: 0,
+            triangle: 0,
+            cross: 0,
+            square: 0
+        };
 
-        requestedShape =
-            shapes[Math.floor(Math.random()*shapes.length)];
+        opponentHand.forEach(c => {
+            if(c && c.shape && shapeCounts[c.shape] !== undefined){
+                shapeCounts[c.shape]++;
+            }
+        });
+
+        // Find shape with maximum count
+        let bestShape = "circle";
+        let maxCount = -1;
+        for(const [shape, count] of Object.entries(shapeCounts)){
+            if(count > maxCount){
+                maxCount = count;
+                bestShape = shape;
+            }
+        }
+
+        // If hand has no standard shapes, pick default or random valid shape
+        const fallbackShapes = ["circle", "triangle", "cross", "square"];
+        requestedShape = (maxCount > 0) ? bestShape : fallbackShapes[Math.floor(Math.random() * fallbackShapes.length)];
 
         const s = String(requestedShape).toLowerCase();
         const symbols = {
@@ -3443,9 +3485,15 @@ function opponentPlay(){
 
         updateBoard();
 
+        checkWinner();
+
         isOpponentThinking = false;
 
-        setTimeout(opponentPlay, 800);
+        if(!gameOver){
+
+            setTimeout(opponentPlay, 800);
+
+        }
 
         return;
 
@@ -3492,9 +3540,15 @@ function opponentPlay(){
 
         updateBoard();
 
+        checkWinner();
+
         isOpponentThinking = false;
 
-        setTimeout(opponentPlay, 800);
+        if(!gameOver){
+
+            setTimeout(opponentPlay, 800);
+
+        }
 
         return;
 
